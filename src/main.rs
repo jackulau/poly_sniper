@@ -8,6 +8,7 @@ use polysniper_core::{
     StateProvider, Strategy, SystemEvent, TradeSignal,
 };
 use polysniper_data::{BroadcastEventBus, GammaClient, MarketCache, WsManager};
+use polysniper_discord::DiscordNotifier;
 use polysniper_execution::{OrderBuilder, OrderSubmitter};
 use polysniper_observability::{
     init_logging, record_event_processing, record_new_market, record_order, record_risk_rejection,
@@ -44,6 +45,7 @@ struct App {
     gamma_client: Arc<GammaClient>,
     database: Option<Arc<Database>>,
     alert_manager: Option<Arc<AlertManager>>,
+    discord_notifier: Option<Arc<DiscordNotifier>>,
     start_time: Instant,
 }
 
@@ -105,6 +107,22 @@ impl App {
             None
         };
 
+        // Initialize Discord notifier
+        let discord_notifier = if config.discord.enabled {
+            match DiscordNotifier::new(config.discord.clone()) {
+                Ok(notifier) => {
+                    info!("Discord notifier initialized");
+                    Some(Arc::new(notifier))
+                }
+                Err(e) => {
+                    warn!(error = %e, "Failed to initialize Discord notifier, continuing without it");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             config,
             event_bus,
@@ -116,6 +134,7 @@ impl App {
             gamma_client,
             database,
             alert_manager,
+            discord_notifier,
             start_time: Instant::now(),
         })
     }
@@ -334,6 +353,17 @@ impl App {
             }
         });
 
+        // Spawn Discord notifier task
+        let discord_handle = if let Some(ref notifier) = self.discord_notifier {
+            let notifier = notifier.clone();
+            let discord_event_rx = self.event_bus.subscribe();
+            Some(tokio::spawn(async move {
+                notifier.run(discord_event_rx).await;
+            }))
+        } else {
+            None
+        };
+
         // Main event processing loop
         let mut event_rx = self.event_bus.subscribe();
 
@@ -396,6 +426,16 @@ impl App {
         // Cleanup
         ws_handle.abort();
         gamma_handle.abort();
+
+        // Stop Discord notifier gracefully
+        if let Some(ref notifier) = self.discord_notifier {
+            info!("Stopping Discord notifier...");
+            notifier.stop();
+        }
+        if let Some(handle) = discord_handle {
+            // Give it a moment to flush pending messages
+            tokio::time::timeout(Duration::from_secs(5), handle).await.ok();
+        }
 
         // Close database connection
         if let Some(db) = &self.database {
@@ -478,6 +518,16 @@ impl App {
                         alert_mgr
                             .alert_strategy_error(strategy.id(), &e.to_string())
                             .await;
+                    }
+
+                    // Also notify via Discord
+                    if let Some(ref discord) = self.discord_notifier {
+                        if let Err(discord_err) = discord
+                            .notify_error(&format!("Strategy Error: {}", strategy.id()), &e.to_string())
+                            .await
+                        {
+                            warn!(error = %discord_err, "Failed to send Discord strategy error alert");
+                        }
                     }
                 }
             }
@@ -614,6 +664,16 @@ impl App {
                         "Signal rejected by risk manager"
                     );
                     record_risk_rejection(&reason);
+
+                    // Notify via Discord for risk rejections
+                    if let Some(ref discord) = self.discord_notifier {
+                        if let Err(discord_err) = discord
+                            .notify_risk_event(&signal.id, &reason)
+                            .await
+                        {
+                            warn!(error = %discord_err, "Failed to send Discord risk rejection alert");
+                        }
+                    }
                 }
                 Err(e) => {
                     error!(
@@ -625,16 +685,23 @@ impl App {
                     // Check for circuit breaker
                     if e.to_string().contains("circuit breaker") {
                         polysniper_observability::metrics::CIRCUIT_BREAKER_TRIGGERED.inc();
+                        let daily_pnl = self.state.get_daily_pnl().await;
+
+                        // Alert via existing alert manager
                         if let Some(alert_mgr) = &self.alert_manager {
-                            let daily_pnl = self
-                                .state
-                                .get_daily_pnl()
-                                .await
-                                .to_f64()
-                                .unwrap_or(0.0);
                             alert_mgr
-                                .alert_circuit_breaker(&e.to_string(), daily_pnl)
+                                .alert_circuit_breaker(&e.to_string(), daily_pnl.to_f64().unwrap_or(0.0))
                                 .await;
+                        }
+
+                        // Also notify via Discord
+                        if let Some(ref discord) = self.discord_notifier {
+                            if let Err(discord_err) = discord
+                                .notify_circuit_breaker(&e.to_string(), daily_pnl)
+                                .await
+                            {
+                                warn!(error = %discord_err, "Failed to send Discord circuit breaker alert");
+                            }
                         }
                     }
                 }

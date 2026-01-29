@@ -87,6 +87,7 @@ edition.workspace = true
 [dependencies]
 polysniper-core = { path = "crates/polysniper-core" }
 polysniper-data = { path = "crates/polysniper-data" }
+polysniper-discord = { path = "crates/polysniper-discord" }
 polysniper-strategies = { path = "crates/polysniper-strategies" }
 polysniper-execution = { path = "crates/polysniper-execution" }
 polysniper-risk = { path = "crates/polysniper-risk" }

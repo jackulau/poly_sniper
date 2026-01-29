@@ -1,11 +1,12 @@
 //! Discord integration for Polysniper
 //!
-//! Provides Discord webhook client, rich embed building, and preset templates
-//! for Discord webhook notifications.
+//! Provides Discord webhook client, rich embed building, preset templates,
+//! and a notification service for Discord webhook notifications.
 
 // Webhook client
 mod client;
 mod error;
+mod notifier;
 mod types;
 
 // Embed builder and templates
@@ -23,3 +24,6 @@ pub use embed::{
     EmbedProvider, EmbedThumbnail, EmbedVideo,
 };
 pub use templates::{ErrorEmbed, RiskEmbed, StatusEmbed, TradeEmbed};
+
+// Re-export notifier
+pub use notifier::DiscordNotifier;
