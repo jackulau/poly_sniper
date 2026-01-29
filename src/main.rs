@@ -5,10 +5,10 @@
 mod backtest;
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use chrono::Utc;
 use polysniper_core::{
-    AppConfig, ConfigChangedEvent, ConfigType, ConfigWatcher, EventBus, OrderExecutor,
-    RiskDecision, RiskValidator, StateManager, StateProvider, Strategy, SystemEvent, TradeSignal,
+    AppConfig, EventBus, HeartbeatEvent, OrderExecutor, RiskDecision, RiskValidator, StateManager,
+    StateProvider, Strategy, SystemEvent, TradeSignal,
 };
 use polysniper_data::{BroadcastEventBus, GammaClient, MarketCache, WsManager};
 use polysniper_execution::{GasOptimizer, GasTracker, OrderBuilder, OrderSubmitter};
@@ -21,8 +21,9 @@ use polysniper_observability::{
 use polysniper_persistence::{Database, TradeRecord, TradeRepository};
 use polysniper_risk::{ControlServer, RiskManager, SignalHandler};
 use polysniper_strategies::{
-    EventBasedConfig, EventBasedStrategy, NewMarketConfig, NewMarketStrategy, PriceSpikeConfig,
-    PriceSpikeStrategy, TargetPriceConfig, TargetPriceStrategy,
+    EventBasedConfig, EventBasedStrategy, LlmPredictionConfig, LlmPredictionStrategy,
+    NewMarketConfig, NewMarketStrategy, PriceSpikeConfig, PriceSpikeStrategy, TargetPriceConfig,
+    TargetPriceStrategy,
 };
 use rust_decimal::prelude::ToPrimitive;
 use std::sync::Arc;
@@ -313,6 +314,25 @@ impl App {
             info!("Loaded Event-Based strategy");
         }
 
+        // Load LLM Prediction Strategy
+        let llm_prediction_config =
+            Self::load_strategy_config::<LlmPredictionConfig>("llm_prediction")?
+                .unwrap_or_default();
+        if llm_prediction_config.enabled {
+            match LlmPredictionStrategy::new(llm_prediction_config) {
+                Ok(strategy) => {
+                    strategies.push(Box::new(strategy));
+                    info!("Loaded LLM Prediction Strategy");
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to initialize LLM Prediction Strategy: {}. Skipping.",
+                        e
+                    );
+                }
+            }
+        }
+
         Ok(strategies)
     }
 
@@ -444,18 +464,19 @@ impl App {
             }
         });
 
-        // Spawn config watcher for hot reload
-        let config_watcher = ConfigWatcher::new(
-            DEFAULT_CONFIG_PATH,
-            STRATEGIES_CONFIG_DIR,
-            self.event_bus.sender(),
-        );
-        let config_watcher_handle = tokio::spawn(async move {
-            if let Err(e) = config_watcher.run().await {
-                error!("Config watcher error: {}", e);
+        // Spawn heartbeat emitter for strategies (e.g., LLM prediction)
+        let heartbeat_event_bus = self.event_bus.clone();
+        tokio::spawn(async move {
+            let mut heartbeat_interval = interval(Duration::from_secs(60));
+            loop {
+                heartbeat_interval.tick().await;
+                let heartbeat = SystemEvent::Heartbeat(HeartbeatEvent {
+                    source: "main".to_string(),
+                    timestamp: Utc::now(),
+                });
+                heartbeat_event_bus.publish(heartbeat);
             }
         });
-        info!("Config watcher started for hot reload");
 
         // Main event processing loop
         let mut event_rx = self.event_bus.subscribe();
@@ -465,22 +486,7 @@ impl App {
             self.config.execution.dry_run
         );
         info!("Loaded {} strategies", self.strategies.len());
-        info!(
-            "Monitoring {} markets",
-            self.state.market_count().await
-        );
-        if self.config.gas.enabled {
-            info!(
-                "Gas tracking enabled (poll: {}s)",
-                self.config.gas.poll_interval_secs
-            );
-        }
-        if self.config.gas.optimization.enabled {
-            info!(
-                "Gas optimization enabled (batch: {})",
-                self.config.gas.optimization.batch_enabled
-            );
-        }
+        info!("Monitoring {} markets", self.state.market_count().await);
 
         // Update initial market count metric
         update_markets_monitored(self.state.market_count().await as i64);
@@ -887,6 +893,8 @@ impl App {
 
                         // Alert via existing alert manager
                         if let Some(alert_mgr) = &self.alert_manager {
+                            let daily_pnl =
+                                self.state.get_daily_pnl().await.to_f64().unwrap_or(0.0);
                             alert_mgr
                                 .alert_circuit_breaker(&e.to_string(), daily_pnl.to_f64().unwrap_or(0.0))
                                 .await;
