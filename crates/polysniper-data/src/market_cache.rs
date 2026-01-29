@@ -1,7 +1,9 @@
 //! In-memory market state cache
 
 use chrono::{DateTime, Utc};
-use polysniper_core::{Market, MarketId, Orderbook, Position, StateManager, StateProvider, TokenId};
+use polysniper_core::{
+    Market, MarketId, Orderbook, Position, StateManager, StateProvider, TokenId,
+};
 use rust_decimal::Decimal;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;

@@ -149,7 +149,9 @@ impl PriceSpikeStrategy {
     /// Record a price and check for spike
     async fn check_for_spike(&self, token_id: &TokenId, price: Decimal) -> Option<(Decimal, bool)> {
         let mut history = self.price_history.write().await;
-        let entries = history.entry(token_id.clone()).or_insert_with(VecDeque::new);
+        let entries = history
+            .entry(token_id.clone())
+            .or_insert_with(VecDeque::new);
 
         let now = Utc::now();
         entries.push_back(PriceEntry {

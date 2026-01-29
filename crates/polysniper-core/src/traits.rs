@@ -141,14 +141,9 @@ pub enum RiskDecision {
     /// Signal is approved
     Approved,
     /// Signal is approved with modifications
-    Modified {
-        new_size: Decimal,
-        reason: String,
-    },
+    Modified { new_size: Decimal, reason: String },
     /// Signal is rejected
-    Rejected {
-        reason: String,
-    },
+    Rejected { reason: String },
 }
 
 impl RiskDecision {
@@ -167,7 +162,8 @@ pub trait OrderExecutor: Send + Sync {
     async fn cancel_order(&self, order_id: &str) -> Result<(), ExecutionError>;
 
     /// Get order status
-    async fn get_order_status(&self, order_id: &str) -> Result<OrderStatusResponse, ExecutionError>;
+    async fn get_order_status(&self, order_id: &str)
+        -> Result<OrderStatusResponse, ExecutionError>;
 
     /// Check if in dry run mode
     fn is_dry_run(&self) -> bool;

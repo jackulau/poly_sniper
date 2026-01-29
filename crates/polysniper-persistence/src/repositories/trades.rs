@@ -61,13 +61,12 @@ impl<'a> TradeRepository<'a> {
 
     /// Get trades by market ID
     pub async fn get_by_market(&self, market_id: &str, limit: i64) -> Result<Vec<TradeRecord>> {
-        let rows = sqlx::query(
-            "SELECT * FROM trades WHERE market_id = ? ORDER BY timestamp DESC LIMIT ?",
-        )
-        .bind(market_id)
-        .bind(limit)
-        .fetch_all(self.db.pool())
-        .await?;
+        let rows =
+            sqlx::query("SELECT * FROM trades WHERE market_id = ? ORDER BY timestamp DESC LIMIT ?")
+                .bind(market_id)
+                .bind(limit)
+                .fetch_all(self.db.pool())
+                .await?;
 
         rows.iter().map(Self::row_to_trade).collect()
     }
@@ -123,9 +122,10 @@ impl<'a> TradeRepository<'a> {
 
     /// Get total volume
     pub async fn total_volume(&self) -> Result<Decimal> {
-        let row = sqlx::query("SELECT COALESCE(SUM(CAST(size_usd AS REAL)), 0) as total FROM trades")
-            .fetch_one(self.db.pool())
-            .await?;
+        let row =
+            sqlx::query("SELECT COALESCE(SUM(CAST(size_usd AS REAL)), 0) as total FROM trades")
+                .fetch_one(self.db.pool())
+                .await?;
 
         let total: f64 = row.get("total");
         Ok(Decimal::from_f64_retain(total).unwrap_or(Decimal::ZERO))

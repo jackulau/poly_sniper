@@ -2,12 +2,16 @@
 //!
 //! Order building and submission to CLOB.
 
-pub mod depth_analyzer;
+pub mod fill_manager;
+pub mod fill_poller;
 pub mod order_builder;
+pub mod order_manager;
 pub mod submitter;
 
-pub use depth_analyzer::{
-    DepthAnalyzer, DepthAnalyzerConfig, OrderSizeRecommendation, PriceImpact,
-};
+pub use fill_manager::{FillManager, TrackedOrder, TrackedOrderStatus};
+pub use fill_poller::FillPoller;
 pub use order_builder::OrderBuilder;
+pub use order_manager::{
+    ManagedOrder, ManagementPolicy, OrderManager, ReplaceAction, ReplaceDecision, ReplaceResult,
+};
 pub use submitter::OrderSubmitter;

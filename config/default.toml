@@ -31,16 +31,38 @@ max_retries = 3
 # Delay between retries in milliseconds
 retry_delay_ms = 100
 
-# Adaptive order sizing based on orderbook depth
-[execution.adaptive_sizing]
-# Whether adaptive sizing is enabled
+# Fill management configuration
+[fill_management]
+# Whether fill tracking is enabled
 enabled = true
-# Maximum acceptable price impact in basis points (50 = 0.5%)
-max_market_impact_bps = 50
-# Maximum ratio of order size to available depth (0.1 = 10%)
-min_liquidity_ratio = 0.1
-# Factor to reduce size when book is thin (0.8 = reduce by 20%)
-size_reduction_factor = 0.8
+# Automatically resubmit remaining quantity when orders expire
+auto_resubmit = false
+# Minimum remaining size to trigger resubmit
+min_resubmit_size = 10.0
+# Polling interval for order status updates in milliseconds
+poll_interval_ms = 1000
+# Maximum number of resubmit attempts per order
+max_resubmit_attempts = 3
+
+# Order management (cancel-and-replace) configuration
+[order_management]
+# Whether automatic order management is enabled
+enabled = true
+# How often to check managed orders (milliseconds)
+check_interval_ms = 500
+
+# Default policy for managed orders
+[order_management.default_policy]
+# Price drift threshold to trigger replacement (in basis points, 25 = 0.25%)
+price_drift_threshold_bps = 25
+# Minimum time between replacements (milliseconds)
+min_replace_interval_ms = 1000
+# Maximum number of replacements per order
+max_replacements = 10
+# Whether to chase price (follow market direction)
+chase_enabled = true
+# How aggressively to chase (0.0 = stay at original, 1.0 = follow mid)
+chase_aggression = 0.5
 
 # Phase 5: SQLite Persistence
 [persistence]

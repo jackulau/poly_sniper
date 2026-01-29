@@ -1,4 +1,4 @@
-use crate::types::{Market, MarketId, Orderbook, Position, TokenId, TradeSignal};
+use crate::types::{Market, MarketId, Order, Orderbook, Position, TokenId, TradeSignal};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -32,6 +32,21 @@ pub enum SystemEvent {
 
     /// Heartbeat for health checks
     Heartbeat(HeartbeatEvent),
+
+    /// Partial fill event
+    PartialFill(PartialFillEvent),
+
+    /// Full fill event
+    FullFill(FullFillEvent),
+
+    /// Order expired event
+    OrderExpired(OrderExpiredEvent),
+
+    /// Order resubmit triggered
+    ResubmitTriggered(ResubmitTriggeredEvent),
+
+    /// Order replaced (cancel-and-replace)
+    OrderReplaced(OrderReplacedEvent),
 }
 
 impl SystemEvent {
@@ -47,6 +62,11 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(_) => "trade_executed",
             SystemEvent::ConnectionStatus(_) => "connection_status",
             SystemEvent::Heartbeat(_) => "heartbeat",
+            SystemEvent::PartialFill(_) => "partial_fill",
+            SystemEvent::FullFill(_) => "full_fill",
+            SystemEvent::OrderExpired(_) => "order_expired",
+            SystemEvent::ResubmitTriggered(_) => "resubmit_triggered",
+            SystemEvent::OrderReplaced(_) => "order_replaced",
         }
     }
 
@@ -62,6 +82,11 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(e) => e.timestamp,
             SystemEvent::ConnectionStatus(e) => e.timestamp,
             SystemEvent::Heartbeat(e) => e.timestamp,
+            SystemEvent::PartialFill(e) => e.timestamp,
+            SystemEvent::FullFill(e) => e.timestamp,
+            SystemEvent::OrderExpired(e) => e.timestamp,
+            SystemEvent::ResubmitTriggered(e) => e.timestamp,
+            SystemEvent::OrderReplaced(e) => e.timestamp,
         }
     }
 
@@ -77,6 +102,11 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(e) => Some(&e.market_id),
             SystemEvent::ConnectionStatus(_) => None,
             SystemEvent::Heartbeat(_) => None,
+            SystemEvent::PartialFill(e) => Some(&e.market_id),
+            SystemEvent::FullFill(e) => Some(&e.market_id),
+            SystemEvent::OrderExpired(e) => Some(&e.market_id),
+            SystemEvent::ResubmitTriggered(e) => Some(&e.market_id),
+            SystemEvent::OrderReplaced(e) => Some(&e.market_id),
         }
     }
 }
@@ -217,5 +247,72 @@ pub enum ConnectionState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeartbeatEvent {
     pub source: String,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// A single fill on an order
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Fill {
+    pub size: Decimal,
+    pub price: Decimal,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Partial fill event - order partially executed
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PartialFillEvent {
+    pub order_id: String,
+    pub market_id: MarketId,
+    pub token_id: TokenId,
+    pub fill: Fill,
+    pub total_filled: Decimal,
+    pub remaining: Decimal,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Full fill event - order completely executed
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FullFillEvent {
+    pub order_id: String,
+    pub market_id: MarketId,
+    pub token_id: TokenId,
+    pub avg_price: Decimal,
+    pub total_size: Decimal,
+    pub fill_count: usize,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Order expired event - order expired with unfilled portion
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderExpiredEvent {
+    pub order_id: String,
+    pub market_id: MarketId,
+    pub token_id: TokenId,
+    pub filled: Decimal,
+    pub unfilled: Decimal,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Resubmit triggered event - new order created for remaining size
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResubmitTriggeredEvent {
+    pub original_order_id: String,
+    pub new_order: Order,
+    pub market_id: MarketId,
+    pub remaining_size: Decimal,
+    pub resubmit_attempt: u32,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Order replaced event - cancel-and-replace operation completed
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderReplacedEvent {
+    pub original_order_id: String,
+    pub new_order_id: String,
+    pub market_id: MarketId,
+    pub old_price: Decimal,
+    pub new_price: Decimal,
+    pub preserved_fill: Decimal,
+    pub reason: String,
     pub timestamp: DateTime<Utc>,
 }

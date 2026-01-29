@@ -420,6 +420,28 @@ pub struct AlertingConfig {
     pub telegram: TelegramAlertConfig,
 }
 
+/// Fill management configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FillManagementConfig {
+    pub enabled: bool,
+    pub auto_resubmit: bool,
+    pub min_resubmit_size: Decimal,
+    pub poll_interval_ms: u64,
+    pub max_resubmit_attempts: u32,
+}
+
+impl Default for FillManagementConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            auto_resubmit: false,
+            min_resubmit_size: Decimal::new(10, 0),
+            poll_interval_ms: 1000,
+            max_resubmit_attempts: 3,
+        }
+    }
+}
+
 impl Default for AlertingConfig {
     fn default() -> Self {
         Self {
@@ -428,6 +450,52 @@ impl Default for AlertingConfig {
             rate_limit_seconds: 60,
             slack: SlackAlertConfig::default(),
             telegram: TelegramAlertConfig::default(),
+        }
+    }
+}
+
+/// Default policy configuration for order management
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManagementPolicyConfig {
+    /// How far price can move before triggering replace (in basis points)
+    pub price_drift_threshold_bps: Decimal,
+    /// Minimum time between replacements (milliseconds)
+    pub min_replace_interval_ms: u64,
+    /// Maximum number of replacements allowed
+    pub max_replacements: u32,
+    /// Whether to chase price (follow market direction)
+    pub chase_enabled: bool,
+    /// How aggressively to chase (0.0 = stay at original, 1.0 = follow mid)
+    pub chase_aggression: f64,
+}
+
+impl Default for ManagementPolicyConfig {
+    fn default() -> Self {
+        Self {
+            price_drift_threshold_bps: Decimal::new(25, 0), // 25 bps = 0.25%
+            min_replace_interval_ms: 1000,
+            max_replacements: 10,
+            chase_enabled: true,
+            chase_aggression: 0.5,
+        }
+    }
+}
+
+/// Order management configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderManagementConfig {
+    pub enabled: bool,
+    pub check_interval_ms: u64,
+    #[serde(default)]
+    pub default_policy: ManagementPolicyConfig,
+}
+
+impl Default for OrderManagementConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            check_interval_ms: 500,
+            default_policy: ManagementPolicyConfig::default(),
         }
     }
 }
@@ -445,6 +513,10 @@ pub struct AppConfig {
     pub metrics: MetricsConfig,
     #[serde(default)]
     pub alerting: AlertingConfig,
+    #[serde(default)]
+    pub fill_management: FillManagementConfig,
+    #[serde(default)]
+    pub order_management: OrderManagementConfig,
 }
 
 impl Default for AppConfig {
@@ -457,6 +529,8 @@ impl Default for AppConfig {
             persistence: PersistenceConfig::default(),
             metrics: MetricsConfig::default(),
             alerting: AlertingConfig::default(),
+            fill_management: FillManagementConfig::default(),
+            order_management: OrderManagementConfig::default(),
         }
     }
 }
