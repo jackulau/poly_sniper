@@ -17,7 +17,7 @@ use polysniper_observability::{
     TelegramConfig,
 };
 use polysniper_persistence::{Database, TradeRecord, TradeRepository};
-use polysniper_risk::RiskManager;
+use polysniper_risk::{ControlServer, RiskManager, SignalHandler};
 use polysniper_strategies::{
     EventBasedConfig, EventBasedStrategy, NewMarketConfig, NewMarketStrategy, PriceSpikeConfig,
     PriceSpikeStrategy, TargetPriceConfig, TargetPriceStrategy,
@@ -303,6 +303,39 @@ impl App {
 
         // Create shutdown signal
         let (shutdown_tx, mut shutdown_rx) = broadcast::channel::<()>(1);
+
+        // Start control server (emergency kill switch)
+        if self.config.control.enabled {
+            let control_config = self.config.control.clone();
+            let control_server = ControlServer::new(
+                control_config.clone(),
+                self.risk_manager.clone(),
+                self.state.clone(),
+                shutdown_tx.clone(),
+            );
+            let control_addr = control_server.address();
+
+            tokio::spawn(async move {
+                if let Err(e) = control_server.run().await {
+                    error!("Control server error: {}", e);
+                }
+            });
+
+            info!(
+                address = %control_addr,
+                "Control server started (endpoints: /halt, /resume, /status, /positions)"
+            );
+
+            // Start signal handlers if enabled
+            if control_config.signal_handlers {
+                let signal_handler = SignalHandler::new(
+                    self.risk_manager.clone(),
+                    self.state.clone(),
+                    shutdown_tx.clone(),
+                );
+                signal_handler.start().await;
+            }
+        }
 
         // Spawn WebSocket manager
         let ws_manager = WsManager::new(

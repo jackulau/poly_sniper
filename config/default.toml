@@ -129,14 +129,15 @@ bot_token = ""
 chat_id = ""
 parse_mode = "HTML"
 
-# Discord Webhook Configuration
-# For security, use DISCORD_WEBHOOK_URL environment variable instead of webhook_url
-[discord]
-enabled = false
-# webhook_url = "https://discord.com/api/webhooks/..."
-notify_on_trade = true
-notify_on_error = true
-notify_on_risk_events = true
-notify_on_connection_status = false
-dry_run = false
-rate_limit_per_minute = 30
+# Emergency Control Server (kill switch)
+[control]
+# Whether the control server is enabled
+enabled = true
+# Port for the HTTP control server
+port = 9876
+# Host address to bind to (use 0.0.0.0 for external access)
+host = "127.0.0.1"
+# Optional bearer token for authentication (set via CONTROL_AUTH_TOKEN env var recommended)
+# auth_token = "your-secret-token"
+# Enable Unix signal handlers (SIGUSR1=toggle halt, SIGUSR2=status, SIGTERM=shutdown)
+signal_handlers = true

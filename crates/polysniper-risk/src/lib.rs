@@ -2,8 +2,8 @@
 //!
 //! Risk validation and position management.
 
-pub mod correlation;
+pub mod control;
 pub mod validator;
 
-pub use correlation::{CorrelationGroup, CorrelationTracker};
+pub use control::{ControlServer, ControlState, SignalHandler};
 pub use validator::RiskManager;

@@ -13,8 +13,10 @@ rust_decimal.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 chrono.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
-rust_decimal_macros.workspace = true
-serde_json.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tokio = { workspace = true, features = ["test-util", "macros"] }
