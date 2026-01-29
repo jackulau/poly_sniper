@@ -6,6 +6,7 @@ pub mod arbitrage;
 pub mod event_based;
 pub mod multi_leg;
 pub mod new_market;
+pub mod orderbook_imbalance;
 pub mod price_spike;
 pub mod target_price;
 
@@ -15,5 +16,6 @@ pub use multi_leg::{
     CorrelationLeg, CorrelationRelationship, CorrelationRule, MultiLegConfig, MultiLegStrategy,
 };
 pub use new_market::{NewMarketConfig, NewMarketStrategy};
+pub use orderbook_imbalance::{OrderbookImbalanceConfig, OrderbookImbalanceStrategy};
 pub use price_spike::{PriceSpikeConfig, PriceSpikeStrategy};
 pub use target_price::{PriceTarget, TargetDirection, TargetPriceConfig, TargetPriceStrategy};
