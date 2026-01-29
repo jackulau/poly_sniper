@@ -4,10 +4,12 @@
 
 pub mod event_based;
 pub mod new_market;
+pub mod orderbook_imbalance;
 pub mod price_spike;
 pub mod target_price;
 
 pub use event_based::{EventBasedConfig, EventBasedStrategy};
 pub use new_market::{NewMarketConfig, NewMarketStrategy};
+pub use orderbook_imbalance::{OrderbookImbalanceConfig, OrderbookImbalanceStrategy};
 pub use price_spike::{PriceSpikeConfig, PriceSpikeStrategy};
 pub use target_price::{PriceTarget, TargetDirection, TargetPriceConfig, TargetPriceStrategy};

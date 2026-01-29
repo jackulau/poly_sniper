@@ -1,0 +1,28 @@
+# Order Book Imbalance Strategy Configuration
+
+[strategy]
+enabled = false
+
+# Minimum imbalance ratio to trigger a signal
+# 2.0 means bids must be 2x asks (or vice versa) to trigger
+imbalance_threshold = "2.0"
+
+# Number of price levels to analyze in the orderbook
+depth_levels = 5
+
+# Order size in USD for imbalance trades
+order_size_usd = "100"
+
+# Minimum liquidity in USD to trade (avoids illiquid markets)
+min_liquidity_usd = "1000"
+
+# Cooldown period after generating a signal (prevents repeated triggers)
+cooldown_secs = 60
+
+# Specific markets to monitor (empty = all markets)
+markets = []
+
+# Weight by value (price * size) instead of just size
+# true = considers notional value, more accurate for varied price levels
+# false = considers raw size only
+use_value_weighting = true
