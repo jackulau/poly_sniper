@@ -1,0 +1,29 @@
+# YES/NO Token Arbitrage Strategy Configuration
+#
+# This strategy detects price discrepancies between YES and NO tokens.
+# When YES + NO < $1.00 (minus fees/spread), buying both tokens guarantees
+# a profit at market resolution regardless of outcome.
+
+[strategy]
+enabled = false
+
+# Minimum edge percentage to trigger arbitrage (deviation from $1.00)
+# e.g., 1.0 means combined price must be at least 1% below $1.00 (after spreads)
+min_edge_pct = "1.0"
+
+# Order size in USD per leg (total position = 2x this amount)
+order_size_usd = "100"
+
+# Minimum liquidity in USD to trade (avoids illiquid markets)
+min_liquidity_usd = "1000"
+
+# Specific markets to monitor (empty = all markets)
+markets = []
+
+# Cooldown period in seconds after detecting an opportunity
+# Prevents repeated triggers on the same market
+cooldown_secs = 30
+
+# Maximum acceptable slippage percentage
+# If actual execution price deviates by more than this, order may fail
+max_slippage_pct = "0.5"

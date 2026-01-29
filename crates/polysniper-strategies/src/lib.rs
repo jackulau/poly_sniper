@@ -2,11 +2,13 @@
 //!
 //! Trading strategy implementations.
 
+pub mod arbitrage;
 pub mod event_based;
 pub mod new_market;
 pub mod price_spike;
 pub mod target_price;
 
+pub use arbitrage::{ArbitrageConfig, ArbitrageStrategy};
 pub use event_based::{EventBasedConfig, EventBasedStrategy};
 pub use new_market::{NewMarketConfig, NewMarketStrategy};
 pub use price_spike::{PriceSpikeConfig, PriceSpikeStrategy};
