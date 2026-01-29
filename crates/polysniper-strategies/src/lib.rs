@@ -8,6 +8,7 @@ pub mod multi_leg;
 pub mod new_market;
 pub mod orderbook_imbalance;
 pub mod price_spike;
+pub mod resolution_exit;
 pub mod target_price;
 
 pub use arbitrage::{ArbitrageConfig, ArbitrageStrategy};
@@ -18,4 +19,5 @@ pub use multi_leg::{
 pub use new_market::{NewMarketConfig, NewMarketStrategy};
 pub use orderbook_imbalance::{OrderbookImbalanceConfig, OrderbookImbalanceStrategy};
 pub use price_spike::{PriceSpikeConfig, PriceSpikeStrategy};
+pub use resolution_exit::{ResolutionExitStrategy, ResolutionExitStrategyConfig};
 pub use target_price::{PriceTarget, TargetDirection, TargetPriceConfig, TargetPriceStrategy};
