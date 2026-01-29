@@ -31,6 +31,19 @@ max_retries = 3
 # Delay between retries in milliseconds
 retry_delay_ms = 100
 
+# Fill management configuration
+[fill_management]
+# Whether fill tracking is enabled
+enabled = true
+# Automatically resubmit remaining quantity when orders expire
+auto_resubmit = false
+# Minimum remaining size to trigger resubmit
+min_resubmit_size = 10.0
+# Polling interval for order status updates in milliseconds
+poll_interval_ms = 1000
+# Maximum number of resubmit attempts per order
+max_resubmit_attempts = 3
+
 # Phase 5: SQLite Persistence
 [persistence]
 # Whether persistence is enabled

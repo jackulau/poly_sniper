@@ -393,6 +393,28 @@ pub struct AlertingConfig {
     pub telegram: TelegramAlertConfig,
 }
 
+/// Fill management configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FillManagementConfig {
+    pub enabled: bool,
+    pub auto_resubmit: bool,
+    pub min_resubmit_size: Decimal,
+    pub poll_interval_ms: u64,
+    pub max_resubmit_attempts: u32,
+}
+
+impl Default for FillManagementConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            auto_resubmit: false,
+            min_resubmit_size: Decimal::new(10, 0),
+            poll_interval_ms: 1000,
+            max_resubmit_attempts: 3,
+        }
+    }
+}
+
 impl Default for AlertingConfig {
     fn default() -> Self {
         Self {
@@ -418,6 +440,8 @@ pub struct AppConfig {
     pub metrics: MetricsConfig,
     #[serde(default)]
     pub alerting: AlertingConfig,
+    #[serde(default)]
+    pub fill_management: FillManagementConfig,
 }
 
 impl Default for AppConfig {
@@ -430,6 +454,7 @@ impl Default for AppConfig {
             persistence: PersistenceConfig::default(),
             metrics: MetricsConfig::default(),
             alerting: AlertingConfig::default(),
+            fill_management: FillManagementConfig::default(),
         }
     }
 }
