@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/polysniper-core",
     "crates/polysniper-data",
+    "crates/polysniper-discord",
     "crates/polysniper-strategies",
     "crates/polysniper-execution",
     "crates/polysniper-risk",

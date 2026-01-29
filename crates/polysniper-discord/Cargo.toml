@@ -1,0 +1,25 @@
+[package]
+name = "polysniper-discord"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Async runtime
+tokio.workspace = true
+async-trait.workspace = true
+
+# HTTP client
+reqwest.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+# Logging
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
