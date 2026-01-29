@@ -259,41 +259,63 @@ impl Default for AuthConfig {
     }
 }
 
-/// Correlation tracking configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CorrelationConfig {
-    /// Whether correlation-aware limits are enabled
-    pub enabled: bool,
-    /// Minimum correlation threshold to group markets (e.g., 0.7)
-    pub correlation_threshold: Decimal,
-    /// Time window in seconds for correlation calculation
-    pub window_secs: u64,
-    /// Maximum total exposure across correlated markets in USD
-    pub max_correlated_exposure_usd: Decimal,
-    /// Manual correlation groups (market slugs)
-    #[serde(default)]
-    pub groups: Vec<CorrelationGroupConfig>,
+/// Action to take when a time rule matches
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum TimeRuleAction {
+    /// Reduce position size by a multiplier (0.0 - 1.0)
+    ReduceSize { multiplier: Decimal },
+    /// Block new positions but allow exits
+    BlockNew,
+    /// Halt all trading on the market
+    HaltAll,
 }
 
-impl Default for CorrelationConfig {
+/// A single time-based risk rule
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimeRule {
+    /// Rule name for identification and logging
+    pub name: String,
+    /// Hours before event/resolution when rule activates
+    pub hours_before: u64,
+    /// Action to take when rule matches
+    pub action: TimeRuleAction,
+    /// Market patterns to match (glob patterns like "*", "election*", etc.)
+    pub applies_to: Vec<String>,
+}
+
+/// Configuration for time-based risk rules
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimeRulesConfig {
+    /// Whether time rules are enabled
+    pub enabled: bool,
+    /// List of time-based rules (evaluated in order, most restrictive wins)
+    #[serde(default)]
+    pub rules: Vec<TimeRule>,
+}
+
+impl Default for TimeRulesConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            correlation_threshold: Decimal::new(7, 1), // 0.7
-            window_secs: 3600,                         // 1 hour
-            max_correlated_exposure_usd: Decimal::new(3000, 0),
-            groups: Vec::new(),
+            rules: vec![
+                TimeRule {
+                    name: "pre_resolution_reduction".to_string(),
+                    hours_before: 24,
+                    action: TimeRuleAction::ReduceSize {
+                        multiplier: Decimal::new(5, 1), // 0.5
+                    },
+                    applies_to: vec!["*".to_string()],
+                },
+                TimeRule {
+                    name: "resolution_block".to_string(),
+                    hours_before: 2,
+                    action: TimeRuleAction::BlockNew,
+                    applies_to: vec!["*".to_string()],
+                },
+            ],
         }
     }
-}
-
-/// Manual correlation group configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CorrelationGroupConfig {
-    /// Group name/identifier
-    pub name: String,
-    /// Market IDs or slug patterns in this group
-    pub markets: Vec<String>,
 }
 
 /// Risk configuration
@@ -304,9 +326,8 @@ pub struct RiskConfig {
     pub daily_loss_limit_usd: Decimal,
     pub circuit_breaker_loss_usd: Decimal,
     pub max_orders_per_minute: u32,
-    /// Correlation-aware position limit configuration
     #[serde(default)]
-    pub correlation: CorrelationConfig,
+    pub time_rules: TimeRulesConfig,
 }
 
 impl Default for RiskConfig {
@@ -317,31 +338,7 @@ impl Default for RiskConfig {
             daily_loss_limit_usd: Decimal::new(500, 0),
             circuit_breaker_loss_usd: Decimal::new(300, 0),
             max_orders_per_minute: 60,
-            correlation: CorrelationConfig::default(),
-        }
-    }
-}
-
-/// Adaptive order sizing configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AdaptiveSizingConfig {
-    /// Whether adaptive sizing is enabled
-    pub enabled: bool,
-    /// Maximum acceptable price impact in basis points
-    pub max_market_impact_bps: Decimal,
-    /// Minimum ratio of order size to available depth (0.0 to 1.0)
-    pub min_liquidity_ratio: Decimal,
-    /// Factor to reduce size when book is thin (0.0 to 1.0)
-    pub size_reduction_factor: Decimal,
-}
-
-impl Default for AdaptiveSizingConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            max_market_impact_bps: Decimal::new(50, 0),    // 50 bps
-            min_liquidity_ratio: Decimal::new(1, 1),       // 0.1 (10%)
-            size_reduction_factor: Decimal::new(8, 1),     // 0.8 (reduce by 20%)
+            time_rules: TimeRulesConfig::default(),
         }
     }
 }

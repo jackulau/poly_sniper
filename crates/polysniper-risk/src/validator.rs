@@ -4,7 +4,7 @@ use crate::correlation::CorrelationTracker;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use polysniper_core::{
-    RiskConfig, RiskDecision, RiskError, RiskValidator, StateProvider, TradeSignal,
+    Market, RiskConfig, RiskDecision, RiskError, RiskValidator, StateProvider, TradeSignal,
 };
 use rust_decimal::Decimal;
 use std::collections::VecDeque;
@@ -12,6 +12,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
+
+use crate::time_rules::{TimeRuleEngine, TimeRuleResult};
 
 /// Order tracking for rate limiting
 #[derive(Debug, Clone)]
@@ -28,20 +30,128 @@ pub struct RiskManager {
     halt_reason: Arc<RwLock<Option<String>>>,
     /// Recent orders for rate limiting
     recent_orders: Arc<RwLock<VecDeque<OrderRecord>>>,
-    /// Correlation tracker for correlated exposure limits
-    correlation_tracker: CorrelationTracker,
+    /// Time rule engine for time-based restrictions
+    time_rule_engine: TimeRuleEngine,
 }
 
 impl RiskManager {
     /// Create a new risk manager
     pub fn new(config: RiskConfig) -> Self {
-        let correlation_tracker = CorrelationTracker::new(config.correlation.clone());
+        let time_rule_engine = TimeRuleEngine::new(config.time_rules.clone());
         Self {
             config: Arc::new(RwLock::new(config)),
             halted: Arc::new(AtomicBool::new(false)),
             halt_reason: Arc::new(RwLock::new(None)),
             recent_orders: Arc::new(RwLock::new(VecDeque::new())),
-            correlation_tracker,
+            time_rule_engine,
+        }
+    }
+
+    /// Get a reference to the time rule engine
+    pub fn time_rule_engine(&self) -> &TimeRuleEngine {
+        &self.time_rule_engine
+    }
+
+    /// Check time rules for a signal and market
+    ///
+    /// Returns Ok(Some(decision)) if a time rule requires action,
+    /// or Ok(None) if no time rules apply and other checks should continue.
+    async fn check_time_rules(
+        &self,
+        signal: &TradeSignal,
+        state: &dyn StateProvider,
+    ) -> Result<Option<RiskDecision>, RiskError> {
+        let market = match state.get_market(&signal.market_id).await {
+            Some(m) => m,
+            None => {
+                // No market info available, skip time rules
+                return Ok(None);
+            }
+        };
+
+        let time_result = self.time_rule_engine.check_signal(signal, &market);
+
+        match time_result {
+            TimeRuleResult::Allowed => Ok(None),
+            TimeRuleResult::ReduceSize {
+                multiplier,
+                rule_name,
+            } => {
+                let new_size = signal.size * multiplier;
+                let new_size_usd = signal.size_usd * multiplier;
+
+                if new_size_usd < Decimal::ONE {
+                    // Size too small after reduction
+                    warn!(
+                        signal_id = %signal.id,
+                        rule = %rule_name,
+                        "Time rule reduced size below minimum, rejecting"
+                    );
+                    return Ok(Some(RiskDecision::Rejected {
+                        reason: format!(
+                            "Time rule '{}' reduced size below minimum (multiplier: {})",
+                            rule_name, multiplier
+                        ),
+                    }));
+                }
+
+                info!(
+                    signal_id = %signal.id,
+                    rule = %rule_name,
+                    original_size = %signal.size,
+                    new_size = %new_size,
+                    multiplier = %multiplier,
+                    "Time rule applied size reduction"
+                );
+                Ok(Some(RiskDecision::Modified {
+                    new_size,
+                    reason: format!(
+                        "Time rule '{}' reduced size by {} ({}h before resolution)",
+                        rule_name,
+                        multiplier,
+                        self.hours_until_end(&market)
+                    ),
+                }))
+            }
+            TimeRuleResult::BlockNew { rule_name } => {
+                warn!(
+                    signal_id = %signal.id,
+                    rule = %rule_name,
+                    "Time rule blocking new position"
+                );
+                Ok(Some(RiskDecision::Rejected {
+                    reason: format!(
+                        "Time rule '{}' blocks new positions ({}h before resolution)",
+                        rule_name,
+                        self.hours_until_end(&market)
+                    ),
+                }))
+            }
+            TimeRuleResult::HaltAll { rule_name } => {
+                warn!(
+                    signal_id = %signal.id,
+                    rule = %rule_name,
+                    "Time rule halting all trading"
+                );
+                Ok(Some(RiskDecision::Rejected {
+                    reason: format!(
+                        "Time rule '{}' halts all trading ({}h before resolution)",
+                        rule_name,
+                        self.hours_until_end(&market)
+                    ),
+                }))
+            }
+        }
+    }
+
+    /// Calculate hours until market ends
+    fn hours_until_end(&self, market: &Market) -> i64 {
+        match market.end_date {
+            Some(end) => {
+                let duration = end.signed_duration_since(Utc::now());
+                duration.num_hours()
+            }
+            None => -1,
         }
     }
 
@@ -268,14 +378,36 @@ impl RiskValidator for RiskManager {
             return Err(RiskError::TradingHalted(reason));
         }
 
-        // Read config once for this validation
-        let config = self.config.read().await;
-        let max_orders_per_minute = config.max_orders_per_minute;
-        let max_order_size_usd = config.max_order_size_usd;
-        let max_position_size_usd = config.max_position_size_usd;
-        let daily_loss_limit_usd = config.daily_loss_limit_usd;
-        let circuit_breaker_loss_usd = config.circuit_breaker_loss_usd;
-        drop(config);
+        // Check time rules first (before other validations)
+        if let Some(decision) = self.check_time_rules(signal, state).await? {
+            // If time rule requires rejection or modification, return early
+            // For Modified, we still need to check other limits on the reduced size
+            match &decision {
+                RiskDecision::Rejected { .. } => return Ok(decision),
+                RiskDecision::Modified { new_size, reason } => {
+                    // Create a modified signal to check other limits
+                    let price = signal.price.unwrap_or(Decimal::ONE);
+                    let new_size_usd = *new_size * price;
+
+                    // Check if modified size passes other limits
+                    if new_size_usd > self.config.max_order_size_usd {
+                        // Still too large, adjust further
+                        let final_size = self.config.max_order_size_usd / price;
+                        return Ok(RiskDecision::Modified {
+                            new_size: final_size,
+                            reason: format!(
+                                "{}; further reduced to order size limit",
+                                reason
+                            ),
+                        });
+                    }
+
+                    // The time rule modification is the final result
+                    return Ok(decision);
+                }
+                RiskDecision::Approved => {}
+            }
+        }
 
         // Check rate limit
         self.check_rate_limit(max_orders_per_minute).await?;

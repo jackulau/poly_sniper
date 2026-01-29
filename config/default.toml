@@ -30,26 +30,31 @@ circuit_breaker_loss_usd = 300
 # Maximum orders per minute
 max_orders_per_minute = 60
 
-# Correlation-aware position limits
-[risk.correlation]
-# Whether correlation-aware limits are enabled
+# Time-based risk rules
+# These rules reduce or halt trading activity as market events approach
+[risk.time_rules]
 enabled = true
-# Minimum correlation threshold to group markets (0.0 to 1.0)
-correlation_threshold = 0.7
-# Time window for correlation calculation in seconds
-window_secs = 3600
-# Maximum total exposure across correlated markets in USD
-max_correlated_exposure_usd = 3000
 
-# Manual correlation groups (optional)
-# Uncomment and customize to define manual market groupings
-# [[risk.correlation.groups]]
-# name = "presidential-election"
-# markets = ["presidential-election-winner", "electoral-vote-count", "swing-state-*"]
-#
-# [[risk.correlation.groups]]
-# name = "fed-decisions"
-# markets = ["fed-rate-decision-*", "fed-chair-*"]
+# Reduce position size by 50% within 24 hours of resolution
+[[risk.time_rules.rules]]
+name = "pre_resolution_reduction"
+hours_before = 24
+action = { type = "reduce_size", multiplier = 0.5 }
+applies_to = ["*"]
+
+# Block new positions within 2 hours of resolution (exits still allowed)
+[[risk.time_rules.rules]]
+name = "resolution_block"
+hours_before = 2
+action = "block_new"
+applies_to = ["*"]
+
+# Example: Apply stricter rules to election markets
+# [[risk.time_rules.rules]]
+# name = "election_early_block"
+# hours_before = 12
+# action = "block_new"
+# applies_to = ["*election*", "*vote*"]
 
 [execution]
 # Set to true to log orders without actually submitting
