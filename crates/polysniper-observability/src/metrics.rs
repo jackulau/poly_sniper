@@ -164,6 +164,12 @@ lazy_static! {
         "polysniper_uptime_seconds",
         "System uptime in seconds"
     ).unwrap();
+
+    // Config metrics
+    pub static ref CONFIG_RELOADS: IntCounter = IntCounter::new(
+        "polysniper_config_reloads_total",
+        "Total successful config reloads"
+    ).unwrap();
 }
 
 /// Register all metrics with the registry
@@ -228,6 +234,9 @@ pub fn register_metrics() {
 
     // System metrics
     REGISTRY.register(Box::new(UPTIME_SECONDS.clone())).ok();
+
+    // Config metrics
+    REGISTRY.register(Box::new(CONFIG_RELOADS.clone())).ok();
 }
 
 /// Get metrics as Prometheus text format
@@ -267,7 +276,7 @@ pub async fn start_metrics_server(port: u16) -> tokio::task::JoinHandle<()> {
     })
 }
 
-/// Helper functions for recording metrics
+// Helper functions for recording metrics
 
 /// Record a trade signal
 pub fn record_signal(strategy: &str, side: &str) {

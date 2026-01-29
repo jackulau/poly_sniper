@@ -96,7 +96,7 @@ pub struct PriceSpikeStrategy {
     id: String,
     name: String,
     enabled: Arc<AtomicBool>,
-    config: PriceSpikeConfig,
+    config: Arc<RwLock<PriceSpikeConfig>>,
     /// Price history per token
     price_history: Arc<RwLock<HashMap<TokenId, VecDeque<PriceEntry>>>>,
     /// Cooldowns per token
@@ -113,7 +113,7 @@ impl PriceSpikeStrategy {
             id: "price_spike".to_string(),
             name: "Price Spike Strategy".to_string(),
             enabled: Arc::new(AtomicBool::new(enabled)),
-            config,
+            config: Arc::new(RwLock::new(config)),
             price_history: Arc::new(RwLock::new(HashMap::new())),
             cooldowns: Arc::new(RwLock::new(HashMap::new())),
             token_market_map: Arc::new(RwLock::new(HashMap::new())),
@@ -139,7 +139,9 @@ impl PriceSpikeStrategy {
 
     /// Set cooldown for a token
     async fn set_cooldown(&self, token_id: &TokenId) {
-        let until = Utc::now() + chrono::Duration::seconds(self.config.cooldown_secs as i64);
+        let config = self.config.read().await;
+        let until = Utc::now() + chrono::Duration::seconds(config.cooldown_secs as i64);
+        drop(config);
         self.cooldowns
             .write()
             .await
@@ -148,6 +150,11 @@ impl PriceSpikeStrategy {
 
     /// Record a price and check for spike
     async fn check_for_spike(&self, token_id: &TokenId, price: Decimal) -> Option<(Decimal, bool)> {
+        let config = self.config.read().await;
+        let time_window_secs = config.time_window_secs;
+        let spike_threshold_pct = config.spike_threshold_pct;
+        drop(config);
+
         let mut history = self.price_history.write().await;
         let entries = history
             .entry(token_id.clone())
@@ -160,7 +167,7 @@ impl PriceSpikeStrategy {
         });
 
         // Remove old entries outside the window
-        let cutoff = now - chrono::Duration::seconds(self.config.time_window_secs as i64);
+        let cutoff = now - chrono::Duration::seconds(time_window_secs as i64);
         while entries
             .front()
             .map(|e| e.timestamp < cutoff)
@@ -191,11 +198,11 @@ impl PriceSpikeStrategy {
             oldest_price = %oldest_price,
             current_price = %price,
             change_pct = %change_pct,
-            threshold = %self.config.spike_threshold_pct,
+            threshold = %spike_threshold_pct,
             "Checking for price spike"
         );
 
-        if abs_change >= self.config.spike_threshold_pct {
+        if abs_change >= spike_threshold_pct {
             let is_spike_up = change_pct > Decimal::ZERO;
             Some((change_pct, is_spike_up))
         } else {
@@ -203,12 +210,12 @@ impl PriceSpikeStrategy {
         }
     }
 
-    /// Determine if we should monitor this market
-    fn should_monitor_market(&self, market_id: &str) -> bool {
-        if self.config.markets.is_empty() {
+    /// Determine if we should monitor this market (sync version using try_read)
+    fn should_monitor_market_sync(&self, markets: &[String], market_id: &str) -> bool {
+        if markets.is_empty() {
             return true;
         }
-        self.config.markets.contains(&market_id.to_string())
+        markets.contains(&market_id.to_string())
     }
 }
 
@@ -242,8 +249,17 @@ impl Strategy for PriceSpikeStrategy {
             _ => return Ok(signals),
         };
 
+        // Read config once for this event processing
+        let config = self.config.read().await;
+        let markets = config.markets.clone();
+        let min_liquidity_usd = config.min_liquidity_usd;
+        let trade_direction = config.trade_direction;
+        let order_size_usd = config.order_size_usd;
+        let spike_threshold_pct = config.spike_threshold_pct;
+        drop(config);
+
         // Check if we should monitor this market
-        if !self.should_monitor_market(&market_id) {
+        if !self.should_monitor_market_sync(&markets, &market_id) {
             return Ok(signals);
         }
 
@@ -273,11 +289,11 @@ impl Strategy for PriceSpikeStrategy {
 
             // Check liquidity if we have state
             if let Some(market) = state.get_market(&market_id).await {
-                if market.liquidity < self.config.min_liquidity_usd {
+                if market.liquidity < min_liquidity_usd {
                     warn!(
                         market_id = %market_id,
                         liquidity = %market.liquidity,
-                        min_required = %self.config.min_liquidity_usd,
+                        min_required = %min_liquidity_usd,
                         "Insufficient liquidity, skipping signal"
                     );
                     return Ok(signals);
@@ -285,7 +301,7 @@ impl Strategy for PriceSpikeStrategy {
             }
 
             // Determine trade side based on direction config
-            let side = match self.config.trade_direction {
+            let side = match trade_direction {
                 TradeDirection::Momentum => {
                     if is_spike_up {
                         Side::Buy
@@ -306,7 +322,7 @@ impl Strategy for PriceSpikeStrategy {
             let size = if price.is_zero() {
                 Decimal::ZERO
             } else {
-                self.config.order_size_usd / price
+                order_size_usd / price
             };
 
             let signal = TradeSignal {
@@ -323,7 +339,7 @@ impl Strategy for PriceSpikeStrategy {
                 side,
                 price: Some(price),
                 size,
-                size_usd: self.config.order_size_usd,
+                size_usd: order_size_usd,
                 order_type: OrderType::Fok, // Use FOK for spike trading
                 priority: Priority::High,   // High priority for time-sensitive
                 timestamp: Utc::now(),
@@ -331,13 +347,13 @@ impl Strategy for PriceSpikeStrategy {
                     "Price spike {:.2}% {} detected, trading {:?}",
                     change_pct,
                     if is_spike_up { "UP" } else { "DOWN" },
-                    self.config.trade_direction
+                    trade_direction
                 ),
                 metadata: serde_json::json!({
                     "change_pct": change_pct.to_string(),
                     "spike_direction": if is_spike_up { "up" } else { "down" },
-                    "trade_direction": format!("{:?}", self.config.trade_direction),
-                    "threshold_pct": self.config.spike_threshold_pct.to_string(),
+                    "trade_direction": format!("{:?}", trade_direction),
+                    "threshold_pct": spike_threshold_pct.to_string(),
                 }),
             };
 
@@ -358,12 +374,14 @@ impl Strategy for PriceSpikeStrategy {
     }
 
     async fn initialize(&mut self, state: &dyn StateProvider) -> Result<(), StrategyError> {
+        let config = self.config.read().await;
         info!(
             strategy_id = %self.id,
-            threshold = %self.config.spike_threshold_pct,
-            window_secs = %self.config.time_window_secs,
+            threshold = %config.spike_threshold_pct,
+            window_secs = %config.time_window_secs,
             "Initializing price spike strategy"
         );
+        drop(config);
 
         // Register all known markets
         for market in state.get_all_markets().await {
@@ -386,6 +404,49 @@ impl Strategy for PriceSpikeStrategy {
 
     fn set_enabled(&mut self, enabled: bool) {
         self.enabled.store(enabled, Ordering::SeqCst);
+    }
+
+    async fn reload_config(&mut self, config_content: &str) -> Result<(), StrategyError> {
+        let new_config: PriceSpikeConfig = toml::from_str(config_content).map_err(|e| {
+            StrategyError::ConfigError(format!("Failed to parse price_spike config: {}", e))
+        })?;
+
+        // Validate config
+        if new_config.spike_threshold_pct <= Decimal::ZERO {
+            return Err(StrategyError::ConfigError(
+                "spike_threshold_pct must be positive".to_string(),
+            ));
+        }
+        if new_config.time_window_secs == 0 {
+            return Err(StrategyError::ConfigError(
+                "time_window_secs must be positive".to_string(),
+            ));
+        }
+        if new_config.order_size_usd <= Decimal::ZERO {
+            return Err(StrategyError::ConfigError(
+                "order_size_usd must be positive".to_string(),
+            ));
+        }
+
+        // Update enabled state
+        self.enabled.store(new_config.enabled, Ordering::SeqCst);
+
+        // Update config atomically
+        let mut config = self.config.write().await;
+        *config = new_config;
+
+        info!(
+            strategy_id = %self.id,
+            threshold = %config.spike_threshold_pct,
+            window_secs = %config.time_window_secs,
+            "Reloaded price_spike configuration"
+        );
+
+        Ok(())
+    }
+
+    fn config_name(&self) -> &str {
+        "price_spike"
     }
 }
 

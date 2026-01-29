@@ -82,7 +82,7 @@ pub struct NewMarketStrategy {
     id: String,
     name: String,
     enabled: Arc<AtomicBool>,
-    config: NewMarketConfig,
+    config: Arc<RwLock<NewMarketConfig>>,
     /// Set of known market IDs
     known_markets: Arc<RwLock<HashSet<MarketId>>>,
     /// Set of markets we've already generated signals for
@@ -97,7 +97,7 @@ impl NewMarketStrategy {
             id: "new_market".to_string(),
             name: "New Market Strategy".to_string(),
             enabled: Arc::new(AtomicBool::new(enabled)),
-            config,
+            config: Arc::new(RwLock::new(config)),
             known_markets: Arc::new(RwLock::new(HashSet::new())),
             signaled_markets: Arc::new(RwLock::new(HashSet::new())),
         }
@@ -126,10 +126,15 @@ impl NewMarketStrategy {
             .insert(market_id.clone());
     }
 
-    /// Check if market matches our filters
-    fn matches_filters(&self, market: &Market) -> bool {
+    /// Check if market matches our filters (using pre-fetched config values)
+    fn matches_filters_sync(
+        &self,
+        market: &Market,
+        keywords: &[String],
+        categories: &[String],
+    ) -> bool {
         // Check keywords
-        if !self.config.keywords.is_empty() {
+        if !keywords.is_empty() {
             let question_lower = market.question.to_lowercase();
             let desc_lower = market
                 .description
@@ -137,7 +142,7 @@ impl NewMarketStrategy {
                 .map(|d| d.to_lowercase())
                 .unwrap_or_default();
 
-            let has_keyword = self.config.keywords.iter().any(|kw| {
+            let has_keyword = keywords.iter().any(|kw| {
                 let kw_lower = kw.to_lowercase();
                 question_lower.contains(&kw_lower) || desc_lower.contains(&kw_lower)
             });
@@ -148,12 +153,13 @@ impl NewMarketStrategy {
         }
 
         // Check categories/tags
-        if !self.config.categories.is_empty() {
-            let has_category = self
-                .config
-                .categories
-                .iter()
-                .any(|cat| market.tags.iter().any(|tag| tag.eq_ignore_ascii_case(cat)));
+        if !categories.is_empty() {
+            let has_category = categories.iter().any(|cat| {
+                market
+                    .tags
+                    .iter()
+                    .any(|tag| tag.eq_ignore_ascii_case(cat))
+            });
 
             if !has_category {
                 return false;
@@ -163,10 +169,10 @@ impl NewMarketStrategy {
         true
     }
 
-    /// Check if market is young enough
-    fn is_young_enough(&self, market: &Market) -> bool {
+    /// Check if market is young enough (using pre-fetched config value)
+    fn is_young_enough_sync(&self, market: &Market, max_age_secs: u64) -> bool {
         let age = Utc::now() - market.created_at;
-        age.num_seconds() <= self.config.max_age_secs as i64
+        age.num_seconds() <= max_age_secs as i64
     }
 }
 
@@ -225,8 +231,20 @@ impl Strategy for NewMarketStrategy {
             return Ok(signals);
         }
 
+        // Read config once for this event processing
+        let config = self.config.read().await;
+        let max_age_secs = config.max_age_secs;
+        let keywords = config.keywords.clone();
+        let categories = config.categories.clone();
+        let min_liquidity_usd = config.min_liquidity_usd;
+        let default_outcome = config.default_outcome;
+        let default_side = config.default_side;
+        let max_entry_price = config.max_entry_price;
+        let order_size_usd = config.order_size_usd;
+        drop(config);
+
         // Check age
-        if !self.is_young_enough(market) {
+        if !self.is_young_enough_sync(market, max_age_secs) {
             debug!(
                 market_id = %market.condition_id,
                 "Market too old, skipping"
@@ -235,7 +253,7 @@ impl Strategy for NewMarketStrategy {
         }
 
         // Check filters
-        if !self.matches_filters(market) {
+        if !self.matches_filters_sync(market, &keywords, &categories) {
             debug!(
                 market_id = %market.condition_id,
                 "Market doesn't match filters, skipping"
@@ -244,18 +262,18 @@ impl Strategy for NewMarketStrategy {
         }
 
         // Check liquidity
-        if market.liquidity < self.config.min_liquidity_usd {
+        if market.liquidity < min_liquidity_usd {
             debug!(
                 market_id = %market.condition_id,
                 liquidity = %market.liquidity,
-                required = %self.config.min_liquidity_usd,
+                required = %min_liquidity_usd,
                 "Insufficient liquidity, skipping"
             );
             return Ok(signals);
         }
 
         // Check current price if we can
-        let token_id = match self.config.default_outcome {
+        let token_id = match default_outcome {
             Outcome::Yes => &market.yes_token_id,
             Outcome::No => &market.no_token_id,
         };
@@ -263,13 +281,13 @@ impl Strategy for NewMarketStrategy {
         let current_price = state.get_price(token_id).await;
 
         // For buying, check max entry price
-        if self.config.default_side == Side::Buy {
+        if default_side == Side::Buy {
             if let Some(price) = current_price {
-                if price > self.config.max_entry_price {
+                if price > max_entry_price {
                     warn!(
                         market_id = %market.condition_id,
                         price = %price,
-                        max_price = %self.config.max_entry_price,
+                        max_price = %max_entry_price,
                         "Price too high for entry, skipping"
                     );
                     return Ok(signals);
@@ -285,11 +303,11 @@ impl Strategy for NewMarketStrategy {
         );
 
         // Calculate size
-        let entry_price = current_price.unwrap_or(self.config.max_entry_price);
+        let entry_price = current_price.unwrap_or(max_entry_price);
         let size = if entry_price.is_zero() {
             Decimal::ZERO
         } else {
-            self.config.order_size_usd / entry_price
+            order_size_usd / entry_price
         };
 
         let signal = TradeSignal {
@@ -302,12 +320,12 @@ impl Strategy for NewMarketStrategy {
             strategy_id: self.id.clone(),
             market_id: market.condition_id.clone(),
             token_id: token_id.clone(),
-            outcome: self.config.default_outcome,
-            side: self.config.default_side,
+            outcome: default_outcome,
+            side: default_side,
             price: Some(entry_price),
             size,
-            size_usd: self.config.order_size_usd,
-            order_type: OrderType::Fok,   // Use FOK for speed
+            size_usd: order_size_usd,
+            order_type: OrderType::Fok, // Use FOK for speed
             priority: Priority::Critical, // Critical priority for new markets
             timestamp: Utc::now(),
             reason: format!("New market detected: {}", market.question),
@@ -332,11 +350,13 @@ impl Strategy for NewMarketStrategy {
     }
 
     async fn initialize(&mut self, state: &dyn StateProvider) -> Result<(), StrategyError> {
+        let config = self.config.read().await;
         info!(
             strategy_id = %self.id,
-            max_age_secs = %self.config.max_age_secs,
+            max_age_secs = %config.max_age_secs,
             "Initializing new market strategy"
         );
+        drop(config);
 
         // Load all existing markets as "known"
         for market in state.get_all_markets().await {
@@ -359,6 +379,50 @@ impl Strategy for NewMarketStrategy {
 
     fn set_enabled(&mut self, enabled: bool) {
         self.enabled.store(enabled, Ordering::SeqCst);
+    }
+
+    async fn reload_config(&mut self, config_content: &str) -> Result<(), StrategyError> {
+        let new_config: NewMarketConfig = toml::from_str(config_content).map_err(|e| {
+            StrategyError::ConfigError(format!("Failed to parse new_market config: {}", e))
+        })?;
+
+        // Validate config
+        if new_config.order_size_usd <= Decimal::ZERO {
+            return Err(StrategyError::ConfigError(
+                "order_size_usd must be positive".to_string(),
+            ));
+        }
+        if new_config.max_age_secs == 0 {
+            return Err(StrategyError::ConfigError(
+                "max_age_secs must be positive".to_string(),
+            ));
+        }
+        if new_config.max_entry_price <= Decimal::ZERO || new_config.max_entry_price >= Decimal::ONE
+        {
+            return Err(StrategyError::ConfigError(
+                "max_entry_price must be between 0 and 1".to_string(),
+            ));
+        }
+
+        // Update enabled state
+        self.enabled.store(new_config.enabled, Ordering::SeqCst);
+
+        // Update config atomically
+        let mut config = self.config.write().await;
+        *config = new_config;
+
+        info!(
+            strategy_id = %self.id,
+            max_age_secs = %config.max_age_secs,
+            order_size_usd = %config.order_size_usd,
+            "Reloaded new_market configuration"
+        );
+
+        Ok(())
+    }
+
+    fn config_name(&self) -> &str {
+        "new_market"
     }
 }
 

@@ -7,8 +7,8 @@ mod backtest;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use polysniper_core::{
-    AppConfig, DiscordConfig, EventBus, OrderExecutor, RiskDecision, RiskValidator, StateManager,
-    StateProvider, Strategy, SystemEvent, TradeSignal,
+    AppConfig, ConfigChangedEvent, ConfigType, ConfigWatcher, EventBus, OrderExecutor,
+    RiskDecision, RiskValidator, StateManager, StateProvider, Strategy, SystemEvent, TradeSignal,
 };
 use polysniper_data::{BroadcastEventBus, GammaClient, MarketCache, WsManager};
 use polysniper_execution::{GasOptimizer, GasTracker, OrderBuilder, OrderSubmitter};
@@ -444,24 +444,18 @@ impl App {
             }
         });
 
-        // Spawn gas tracker if enabled
-        let gas_tracker_handle = if self.config.gas.enabled {
-            let gas_tracker = GasTracker::new(
-                self.config.gas.clone(),
-                self.event_bus.sender(),
-            );
-            info!(
-                poll_interval = %self.config.gas.poll_interval_secs,
-                "Starting gas tracker"
-            );
-            Some(tokio::spawn(async move {
-                if let Err(e) = gas_tracker.run().await {
-                    error!("Gas tracker error: {}", e);
-                }
-            }))
-        } else {
-            None
-        };
+        // Spawn config watcher for hot reload
+        let config_watcher = ConfigWatcher::new(
+            DEFAULT_CONFIG_PATH,
+            STRATEGIES_CONFIG_DIR,
+            self.event_bus.sender(),
+        );
+        let config_watcher_handle = tokio::spawn(async move {
+            if let Err(e) = config_watcher.run().await {
+                error!("Config watcher error: {}", e);
+            }
+        });
+        info!("Config watcher started for hot reload");
 
         // Main event processing loop
         let mut event_rx = self.event_bus.subscribe();
@@ -537,14 +531,7 @@ impl App {
         // Cleanup
         ws_handle.abort();
         gamma_handle.abort();
-        if let Some(handle) = gas_tracker_handle {
-            handle.abort();
-        }
-
-        // Shutdown gas optimizer gracefully
-        if let Some(optimizer) = &self.gas_optimizer {
-            optimizer.shutdown().await;
-        }
+        config_watcher_handle.abort();
 
         // Close database connection
         if let Some(db) = &self.database {
@@ -573,8 +560,90 @@ impl App {
         Ok(())
     }
 
+    /// Handle config change event
+    async fn handle_config_change(&mut self, event: &ConfigChangedEvent) {
+        info!(
+            path = %event.path.display(),
+            config_type = ?event.config_type,
+            "Config change detected"
+        );
+
+        // Read the file content
+        let content = match std::fs::read_to_string(&event.path) {
+            Ok(c) => c,
+            Err(e) => {
+                error!(
+                    path = %event.path.display(),
+                    error = %e,
+                    "Failed to read config file"
+                );
+                return;
+            }
+        };
+
+        match &event.config_type {
+            ConfigType::Main => {
+                // Reload main config - update risk manager and other settings
+                match toml::from_str::<AppConfig>(&content) {
+                    Ok(new_config) => {
+                        // Update risk manager config
+                        self.risk_manager.update_config(new_config.risk.clone()).await;
+                        info!("Reloaded main configuration");
+
+                        // Record config reload metric
+                        polysniper_observability::metrics::CONFIG_RELOADS.inc();
+                    }
+                    Err(e) => {
+                        error!(
+                            error = %e,
+                            "Failed to parse main config, skipping reload"
+                        );
+                    }
+                }
+            }
+            ConfigType::Strategy(strategy_name) => {
+                // Find the matching strategy and reload its config
+                let mut found = false;
+                for strategy in &mut self.strategies {
+                    if strategy.config_name() == strategy_name {
+                        found = true;
+                        match strategy.reload_config(&content).await {
+                            Ok(()) => {
+                                info!(
+                                    strategy = %strategy_name,
+                                    "Reloaded strategy configuration"
+                                );
+                                polysniper_observability::metrics::CONFIG_RELOADS.inc();
+                            }
+                            Err(e) => {
+                                error!(
+                                    strategy = %strategy_name,
+                                    error = %e,
+                                    "Failed to reload strategy config"
+                                );
+                            }
+                        }
+                        break;
+                    }
+                }
+                if !found {
+                    warn!(
+                        strategy = %strategy_name,
+                        "No matching strategy found for config change"
+                    );
+                }
+            }
+        }
+    }
+
     /// Process a single event
-    async fn process_event(&self, event: SystemEvent) -> Result<()> {
+    async fn process_event(&mut self, event: SystemEvent) -> Result<()> {
+        // Handle config change events separately
+        if let SystemEvent::ConfigChanged(ref config_event) = event {
+            self.handle_config_change(config_event).await;
+            return Ok(());
+        }
+
         // Update state based on event
         match &event {
             SystemEvent::OrderbookUpdate(e) => {
