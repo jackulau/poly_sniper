@@ -1,0 +1,17 @@
+[package]
+name = "polysniper-discord"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+polysniper-core = { path = "../polysniper-core" }
+
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+rust_decimal_macros.workspace = true
