@@ -13,7 +13,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
-use crate::time_rules::{TimeRuleEngine, TimeRuleResult};
+use crate::volatility::VolatilityCalculator;
 
 /// Order tracking for rate limiting
 #[derive(Debug, Clone)]
@@ -30,20 +30,20 @@ pub struct RiskManager {
     halt_reason: Arc<RwLock<Option<String>>>,
     /// Recent orders for rate limiting
     recent_orders: Arc<RwLock<VecDeque<OrderRecord>>>,
-    /// Time rule engine for time-based restrictions
-    time_rule_engine: TimeRuleEngine,
+    /// Volatility calculator for position sizing
+    volatility_calculator: VolatilityCalculator,
 }
 
 impl RiskManager {
     /// Create a new risk manager
     pub fn new(config: RiskConfig) -> Self {
-        let time_rule_engine = TimeRuleEngine::new(config.time_rules.clone());
+        let volatility_calculator = VolatilityCalculator::new(config.volatility.clone());
         Self {
             config: Arc::new(RwLock::new(config)),
             halted: Arc::new(AtomicBool::new(false)),
             halt_reason: Arc::new(RwLock::new(None)),
             recent_orders: Arc::new(RwLock::new(VecDeque::new())),
-            time_rule_engine,
+            volatility_calculator,
         }
     }
 
@@ -306,57 +306,58 @@ impl RiskManager {
         }
     }
 
-    /// Check correlated exposure limit
-    async fn check_correlated_exposure(
+    /// Calculate volatility-adjusted size based on market conditions
+    ///
+    /// Returns (adjusted_size, was_modified, reason) if volatility adjustment applies
+    async fn calculate_volatility_adjusted_size(
         &self,
         signal: &TradeSignal,
         state: &dyn StateProvider,
-    ) -> Result<Option<Decimal>, RiskError> {
-        if !self.correlation_tracker.is_enabled() {
-            return Ok(None);
+    ) -> Option<(Decimal, String)> {
+        if !self.volatility_calculator.is_enabled() {
+            return None;
         }
 
-        // Check if this market is in any correlation group
-        let groups = self.correlation_tracker.get_groups_for_market(&signal.market_id);
-        if groups.is_empty() {
+        // Get price history for the token
+        let price_history = state.get_price_history(&signal.token_id, 1000).await;
+
+        if price_history.is_empty() {
             debug!(
-                market_id = %signal.market_id,
-                "Market not in any correlation group, skipping correlation check"
+                token_id = %signal.token_id,
+                "No price history for volatility calculation, skipping adjustment"
             );
-            return Ok(None);
+            return None;
         }
 
-        // Calculate current correlated exposure
-        let current_exposure = self
-            .correlation_tracker
-            .calculate_correlated_exposure(&signal.market_id, state)
-            .await;
+        let (adjusted_size, multiplier, volatility) = self
+            .volatility_calculator
+            .adjust_size(signal.size, &price_history);
 
-        let max_exposure = self.correlation_tracker.max_correlated_exposure();
-        let new_total = current_exposure + signal.size_usd;
+        // Only report modification if multiplier is not 1.0
+        if multiplier != Decimal::ONE {
+            let vol_str = volatility
+                .map(|v| format!("{:.2}%", v))
+                .unwrap_or_else(|| "unknown".to_string());
 
-        debug!(
-            market_id = %signal.market_id,
-            current_exposure = %current_exposure,
-            order_size = %signal.size_usd,
-            new_total = %new_total,
-            limit = %max_exposure,
-            "Checking correlated exposure"
-        );
+            let reason = format!(
+                "Volatility-adjusted: size {} -> {} (multiplier: {:.2}, volatility: {})",
+                signal.size, adjusted_size, multiplier, vol_str
+            );
 
-        if new_total > max_exposure {
-            let remaining_room = max_exposure - current_exposure;
-            if remaining_room <= Decimal::ZERO {
-                return Err(RiskError::CorrelatedExposureExceeded(format!(
-                    "Correlated exposure ${} already at/above limit ${}",
-                    current_exposure, max_exposure
-                )));
-            }
-            // Return the remaining room for potential size adjustment
-            return Ok(Some(remaining_room));
+            info!(
+                signal_id = %signal.id,
+                token_id = %signal.token_id,
+                original_size = %signal.size,
+                adjusted_size = %adjusted_size,
+                multiplier = %multiplier,
+                volatility = ?volatility,
+                "Applying volatility-based position sizing"
+            );
+
+            return Some((adjusted_size, reason));
         }
 
-        Ok(None)
+        None
     }
 }
 
@@ -469,38 +470,14 @@ impl RiskValidator for RiskManager {
             return Err(e);
         }
 
-        // Check correlated exposure limit
-        match self.check_correlated_exposure(signal, state).await {
-            Ok(Some(remaining_room)) => {
-                // Need to reduce size due to correlated exposure
-                if let Some(new_size) = self.calculate_adjusted_size(signal, remaining_room) {
-                    if new_size > Decimal::ZERO {
-                        warn!(
-                            signal_id = %signal.id,
-                            original_size = %signal.size,
-                            new_size = %new_size,
-                            remaining_room = %remaining_room,
-                            "Adjusting order size due to correlated exposure limit"
-                        );
-                        return Ok(RiskDecision::Modified {
-                            new_size,
-                            reason: format!(
-                                "Order size reduced from {} to {} due to correlated exposure limit (${} remaining)",
-                                signal.size, new_size, remaining_room
-                            ),
-                        });
-                    }
-                }
-                // No room at all
-                return Err(RiskError::CorrelatedExposureExceeded(format!(
-                    "No remaining room in correlated exposure limit (${} limit)",
-                    self.correlation_tracker.max_correlated_exposure()
-                )));
-            }
-            Ok(None) => {
-                // No adjustment needed
-            }
-            Err(e) => return Err(e),
+        // Apply volatility-based position sizing
+        if let Some((adjusted_size, reason)) =
+            self.calculate_volatility_adjusted_size(signal, state).await
+        {
+            return Ok(RiskDecision::Modified {
+                new_size: adjusted_size,
+                reason,
+            });
         }
 
         Ok(RiskDecision::Approved)
