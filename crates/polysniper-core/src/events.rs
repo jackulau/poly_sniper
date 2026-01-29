@@ -32,6 +32,9 @@ pub enum SystemEvent {
 
     /// Heartbeat for health checks
     Heartbeat(HeartbeatEvent),
+
+    /// Config file changed
+    ConfigChanged(ConfigChangedEvent),
 }
 
 impl SystemEvent {
@@ -47,6 +50,7 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(_) => "trade_executed",
             SystemEvent::ConnectionStatus(_) => "connection_status",
             SystemEvent::Heartbeat(_) => "heartbeat",
+            SystemEvent::ConfigChanged(_) => "config_changed",
         }
     }
 
@@ -62,6 +66,7 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(e) => e.timestamp,
             SystemEvent::ConnectionStatus(e) => e.timestamp,
             SystemEvent::Heartbeat(e) => e.timestamp,
+            SystemEvent::ConfigChanged(e) => e.timestamp,
         }
     }
 
@@ -77,6 +82,38 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(e) => Some(&e.market_id),
             SystemEvent::ConnectionStatus(_) => None,
             SystemEvent::Heartbeat(_) => None,
+            SystemEvent::ConfigChanged(_) => None,
+        }
+    }
+}
+
+/// Type of configuration that changed
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConfigType {
+    /// Main application config (config/default.toml)
+    Main,
+    /// Strategy config (config/strategies/*.toml)
+    Strategy(String),
+}
+
+/// Config file changed event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigChangedEvent {
+    /// Path to the changed config file
+    pub path: std::path::PathBuf,
+    /// Type of config that changed
+    pub config_type: ConfigType,
+    /// When the change was detected
+    pub timestamp: DateTime<Utc>,
+}
+
+impl ConfigChangedEvent {
+    /// Create a new config changed event
+    pub fn new(path: std::path::PathBuf, config_type: ConfigType) -> Self {
+        Self {
+            path,
+            config_type,
+            timestamp: Utc::now(),
         }
     }
 }
