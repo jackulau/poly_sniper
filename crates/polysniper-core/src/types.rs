@@ -352,7 +352,7 @@ pub struct ExecutionConfig {
     pub max_retries: u32,
     pub retry_delay_ms: u64,
     #[serde(default)]
-    pub adaptive_sizing: AdaptiveSizingConfig,
+    pub queue_estimation: QueueEstimatorConfig,
 }
 
 impl Default for ExecutionConfig {
@@ -361,9 +361,52 @@ impl Default for ExecutionConfig {
             dry_run: true,
             max_retries: 3,
             retry_delay_ms: 100,
-            adaptive_sizing: AdaptiveSizingConfig::default(),
+            queue_estimation: QueueEstimatorConfig::default(),
         }
     }
+}
+
+/// Configuration for queue position estimation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueueEstimatorConfig {
+    /// Whether queue estimation is enabled
+    pub enabled: bool,
+    /// How far back to look for fill rates (in seconds)
+    pub history_window_secs: u64,
+    /// Minimum fills needed for reliable estimation
+    pub min_samples_for_estimate: u32,
+    /// How quickly confidence decays with time (0.0 to 1.0)
+    pub confidence_decay_factor: f64,
+}
+
+impl Default for QueueEstimatorConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            history_window_secs: 300,
+            min_samples_for_estimate: 10,
+            confidence_decay_factor: 0.95,
+        }
+    }
+}
+
+/// Queue position information for a limit order
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueuePosition {
+    /// Price level of the order
+    pub price_level: Decimal,
+    /// Total size ahead in the queue
+    pub size_ahead: Decimal,
+    /// Approximate position in queue
+    pub estimated_position: u32,
+    /// Estimated time to fill in seconds (None if insufficient data)
+    pub estimated_time_to_fill_secs: Option<f64>,
+    /// Confidence in the estimate (0.0 to 1.0)
+    pub confidence: f64,
+    /// Probability of fill in the next minute
+    pub fill_probability_1min: f64,
+    /// Probability of fill in the next 5 minutes
+    pub fill_probability_5min: f64,
 }
 
 /// Persistence configuration

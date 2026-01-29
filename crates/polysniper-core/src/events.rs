@@ -1,5 +1,4 @@
-use crate::gas::{GasCondition, GasPrice};
-use crate::types::{Market, MarketId, Orderbook, Position, TokenId, TradeSignal};
+use crate::types::{Market, MarketId, Orderbook, Position, QueuePosition, TokenId, TradeSignal};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -28,6 +27,9 @@ pub enum SystemEvent {
     /// Trade executed
     TradeExecuted(TradeExecutedEvent),
 
+    /// Queue position update for a tracked order
+    QueueUpdate(QueueUpdateEvent),
+
     /// Connection status change
     ConnectionStatus(ConnectionStatusEvent),
 
@@ -49,6 +51,7 @@ impl SystemEvent {
             SystemEvent::ExternalSignal(_) => "external_signal",
             SystemEvent::PositionUpdate(_) => "position_update",
             SystemEvent::TradeExecuted(_) => "trade_executed",
+            SystemEvent::QueueUpdate(_) => "queue_update",
             SystemEvent::ConnectionStatus(_) => "connection_status",
             SystemEvent::Heartbeat(_) => "heartbeat",
             SystemEvent::GasPriceUpdate(_) => "gas_price_update",
@@ -65,6 +68,7 @@ impl SystemEvent {
             SystemEvent::ExternalSignal(e) => e.received_at,
             SystemEvent::PositionUpdate(e) => e.timestamp,
             SystemEvent::TradeExecuted(e) => e.timestamp,
+            SystemEvent::QueueUpdate(e) => e.timestamp,
             SystemEvent::ConnectionStatus(e) => e.timestamp,
             SystemEvent::Heartbeat(e) => e.timestamp,
             SystemEvent::GasPriceUpdate(e) => e.timestamp,
@@ -81,6 +85,7 @@ impl SystemEvent {
             SystemEvent::ExternalSignal(e) => e.market_id.as_ref(),
             SystemEvent::PositionUpdate(e) => Some(&e.market_id),
             SystemEvent::TradeExecuted(e) => Some(&e.market_id),
+            SystemEvent::QueueUpdate(e) => Some(&e.market_id),
             SystemEvent::ConnectionStatus(_) => None,
             SystemEvent::Heartbeat(_) => None,
             SystemEvent::GasPriceUpdate(_) => None,
@@ -227,50 +232,17 @@ pub struct HeartbeatEvent {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Gas price update event
+/// Queue position update event for a tracked order
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GasPriceUpdateEvent {
-    /// Current gas price data
-    pub gas_price: GasPrice,
-    /// Previous gas price (if available)
-    pub previous_price: Option<GasPrice>,
-    /// Current gas condition classification
-    pub condition: GasCondition,
-    /// Previous condition (if changed)
-    pub previous_condition: Option<GasCondition>,
-    /// Whether this is a gas spike
-    pub is_spike: bool,
-    /// Rolling average of standard gas price (gwei)
-    pub average_gwei: Option<Decimal>,
-    /// Timestamp of this update
+pub struct QueueUpdateEvent {
+    /// Order ID being tracked
+    pub order_id: String,
+    /// Token ID for the order
+    pub token_id: TokenId,
+    /// Market ID for the order
+    pub market_id: MarketId,
+    /// Updated queue position information
+    pub position: QueuePosition,
+    /// When this update was calculated
     pub timestamp: DateTime<Utc>,
-}
-
-impl GasPriceUpdateEvent {
-    /// Create a new gas price update event
-    pub fn new(
-        gas_price: GasPrice,
-        previous_price: Option<GasPrice>,
-        condition: GasCondition,
-        previous_condition: Option<GasCondition>,
-        is_spike: bool,
-        average_gwei: Option<Decimal>,
-    ) -> Self {
-        Self {
-            gas_price,
-            previous_price,
-            condition,
-            previous_condition,
-            is_spike,
-            average_gwei,
-            timestamp: Utc::now(),
-        }
-    }
-
-    /// Check if the gas condition changed
-    pub fn condition_changed(&self) -> bool {
-        self.previous_condition
-            .map(|prev| prev != self.condition)
-            .unwrap_or(false)
-    }
 }
