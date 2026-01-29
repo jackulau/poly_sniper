@@ -31,6 +31,17 @@ max_retries = 3
 # Delay between retries in milliseconds
 retry_delay_ms = 100
 
+# Adaptive order sizing based on orderbook depth
+[execution.adaptive_sizing]
+# Whether adaptive sizing is enabled
+enabled = true
+# Maximum acceptable price impact in basis points (50 = 0.5%)
+max_market_impact_bps = 50
+# Maximum ratio of order size to available depth (0.1 = 10%)
+min_liquidity_ratio = 0.1
+# Factor to reduce size when book is thin (0.8 = reduce by 20%)
+size_reduction_factor = 0.8
+
 # Phase 5: SQLite Persistence
 [persistence]
 # Whether persistence is enabled
