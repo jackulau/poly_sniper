@@ -107,7 +107,7 @@ pub struct EventBasedStrategy {
     id: String,
     name: String,
     enabled: Arc<AtomicBool>,
-    config: EventBasedConfig,
+    config: Arc<RwLock<EventBasedConfig>>,
     /// Cache of matched signals to prevent duplicates
     processed_signals: Arc<RwLock<lru::LruCache<String, ()>>>,
 }
@@ -120,7 +120,7 @@ impl EventBasedStrategy {
             id: "event_based".to_string(),
             name: "Event-Based Strategy".to_string(),
             enabled: Arc::new(AtomicBool::new(enabled)),
-            config,
+            config: Arc::new(RwLock::new(config)),
             processed_signals: Arc::new(RwLock::new(lru::LruCache::new(
                 std::num::NonZeroUsize::new(1000).unwrap(),
             ))),
@@ -176,9 +176,13 @@ impl EventBasedStrategy {
         })
     }
 
-    /// Find matching rule for signal
-    fn find_matching_rule(&self, signal: &ExternalSignalEvent) -> Option<&SignalRule> {
-        for rule in &self.config.rules {
+    /// Find matching rule for signal (using pre-fetched rules)
+    fn find_matching_rule_sync<'a>(
+        &self,
+        signal: &ExternalSignalEvent,
+        rules: &'a [SignalRule],
+    ) -> Option<&'a SignalRule> {
+        for rule in rules {
             // Check source filter
             if let Some(filter) = &rule.source_filter {
                 if !self.matches_source_filter(signal, filter) {
@@ -194,12 +198,13 @@ impl EventBasedStrategy {
         None
     }
 
-    /// Resolve market from action
+    /// Resolve market from action (using pre-fetched market_mappings)
     async fn resolve_market(
         &self,
         action: &RuleAction,
         signal: &ExternalSignalEvent,
         state: &dyn StateProvider,
+        market_mappings: &HashMap<String, MarketMapping>,
     ) -> Option<(MarketId, String, String)> {
         // If signal already has market ID
         if let Some(market_id) = &signal.market_id {
@@ -226,7 +231,7 @@ impl EventBasedStrategy {
         // Try market mappings
         if let Some(keywords) = &action.market_keywords {
             for keyword in keywords {
-                if let Some(mapping) = self.config.market_mappings.get(keyword) {
+                if let Some(mapping) = market_mappings.get(keyword) {
                     return Some((
                         mapping.market_id.clone(),
                         mapping.yes_token_id.clone(),
@@ -295,9 +300,16 @@ impl Strategy for EventBasedStrategy {
             processed.put(signal_hash.clone(), ());
         }
 
+        // Read config once for this event processing
+        let config = self.config.read().await;
+        let rules = config.rules.clone();
+        let default_order_size_usd = config.default_order_size_usd;
+        let market_mappings = config.market_mappings.clone();
+        drop(config);
+
         // Find matching rule
-        let rule = match self.find_matching_rule(external_signal) {
-            Some(r) => r,
+        let rule = match self.find_matching_rule_sync(external_signal, &rules) {
+            Some(r) => r.clone(),
             None => {
                 debug!(
                     content = %external_signal.content,
@@ -315,7 +327,10 @@ impl Strategy for EventBasedStrategy {
 
         // Resolve market
         let (market_id, yes_token_id, no_token_id) =
-            match self.resolve_market(&rule.action, external_signal, state).await {
+            match self
+                .resolve_market(&rule.action, external_signal, state, &market_mappings)
+                .await
+            {
                 Some(m) => m,
                 None => {
                     warn!(
@@ -349,10 +364,7 @@ impl Strategy for EventBasedStrategy {
             }
         }
 
-        let order_size = rule
-            .action
-            .order_size_usd
-            .unwrap_or(self.config.default_order_size_usd);
+        let order_size = rule.action.order_size_usd.unwrap_or(default_order_size_usd);
         let entry_price = current_price.unwrap_or(rule.action.max_entry_price);
         let size = if entry_price.is_zero() {
             Decimal::ZERO
@@ -378,7 +390,11 @@ impl Strategy for EventBasedStrategy {
             order_type: OrderType::Fok,
             priority: rule.priority,
             timestamp: Utc::now(),
-            reason: format!("External signal matched rule '{}': {}", rule.name, truncate(&external_signal.content, 100)),
+            reason: format!(
+                "External signal matched rule '{}': {}",
+                rule.name,
+                truncate(&external_signal.content, 100)
+            ),
             metadata: serde_json::json!({
                 "rule_name": rule.name,
                 "signal_type": external_signal.signal_type,
@@ -397,9 +413,10 @@ impl Strategy for EventBasedStrategy {
     }
 
     async fn initialize(&mut self, _state: &dyn StateProvider) -> Result<(), StrategyError> {
+        let config = self.config.read().await;
         info!(
             strategy_id = %self.id,
-            rules_count = %self.config.rules.len(),
+            rules_count = %config.rules.len(),
             "Initializing event-based strategy"
         );
         Ok(())
@@ -411,6 +428,48 @@ impl Strategy for EventBasedStrategy {
 
     fn set_enabled(&mut self, enabled: bool) {
         self.enabled.store(enabled, Ordering::SeqCst);
+    }
+
+    async fn reload_config(&mut self, config_content: &str) -> Result<(), StrategyError> {
+        let new_config: EventBasedConfig = toml::from_str(config_content).map_err(|e| {
+            StrategyError::ConfigError(format!("Failed to parse event_based config: {}", e))
+        })?;
+
+        // Validate config
+        if new_config.default_order_size_usd <= Decimal::ZERO {
+            return Err(StrategyError::ConfigError(
+                "default_order_size_usd must be positive".to_string(),
+            ));
+        }
+
+        // Validate rules
+        for rule in &new_config.rules {
+            if rule.keywords.is_empty() {
+                return Err(StrategyError::ConfigError(format!(
+                    "Rule '{}' must have at least one keyword",
+                    rule.name
+                )));
+            }
+        }
+
+        // Update enabled state
+        self.enabled.store(new_config.enabled, Ordering::SeqCst);
+
+        // Update config atomically
+        let mut config = self.config.write().await;
+        *config = new_config;
+
+        info!(
+            strategy_id = %self.id,
+            rules_count = %config.rules.len(),
+            "Reloaded event_based configuration"
+        );
+
+        Ok(())
+    }
+
+    fn config_name(&self) -> &str {
+        "event_based"
     }
 }
 

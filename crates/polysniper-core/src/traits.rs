@@ -37,6 +37,22 @@ pub trait Strategy: Send + Sync {
 
     /// Enable or disable the strategy
     fn set_enabled(&mut self, enabled: bool);
+
+    /// Reload configuration from provided TOML content
+    ///
+    /// Returns Ok(()) on success, Err if config is invalid.
+    /// Implementations should:
+    /// 1. Parse the TOML content
+    /// 2. Validate the configuration
+    /// 3. Update internal state atomically
+    /// 4. Be idempotent (safe to call multiple times)
+    async fn reload_config(&mut self, config_content: &str) -> Result<(), StrategyError>;
+
+    /// Get the strategy's config file name (without extension)
+    ///
+    /// This is used to match config file changes to the appropriate strategy.
+    /// For example, a strategy in "config/strategies/price_spike.toml" should return "price_spike".
+    fn config_name(&self) -> &str;
 }
 
 /// Data source trait for market data feeds

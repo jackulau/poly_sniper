@@ -96,12 +96,10 @@ impl TargetPriceStrategy {
         }
 
         // Initialize synchronously by creating a new RwLock
-        let strategy = Self {
+        Self {
             targets: Arc::new(RwLock::new(targets_map)),
             ..strategy
-        };
-
-        strategy
+        }
     }
 
     /// Add a price target
@@ -264,6 +262,56 @@ impl Strategy for TargetPriceStrategy {
 
     fn set_enabled(&mut self, enabled: bool) {
         self.enabled.store(enabled, Ordering::SeqCst);
+    }
+
+    async fn reload_config(&mut self, config_content: &str) -> Result<(), StrategyError> {
+        let config: TargetPriceConfig = toml::from_str(config_content).map_err(|e| {
+            StrategyError::ConfigError(format!("Failed to parse target_price config: {}", e))
+        })?;
+
+        // Validate config
+        for target in &config.targets {
+            if target.size_usd <= Decimal::ZERO {
+                return Err(StrategyError::ConfigError(format!(
+                    "Invalid size_usd {} for target {}",
+                    target.size_usd, target.market_id
+                )));
+            }
+            if target.target_price <= Decimal::ZERO || target.target_price >= Decimal::ONE {
+                return Err(StrategyError::ConfigError(format!(
+                    "Invalid target_price {} for target {} (must be between 0 and 1)",
+                    target.target_price, target.market_id
+                )));
+            }
+        }
+
+        // Update enabled state
+        self.enabled.store(config.enabled, Ordering::SeqCst);
+
+        // Group targets by token ID
+        let mut targets_map: HashMap<TokenId, Vec<PriceTarget>> = HashMap::new();
+        for target in config.targets {
+            targets_map
+                .entry(target.token_id.clone())
+                .or_default()
+                .push(target);
+        }
+
+        // Update targets atomically
+        let mut targets = self.targets.write().await;
+        *targets = targets_map;
+
+        info!(
+            strategy_id = %self.id,
+            target_count = %targets.values().map(|v| v.len()).sum::<usize>(),
+            "Reloaded target_price configuration"
+        );
+
+        Ok(())
+    }
+
+    fn config_name(&self) -> &str {
+        "target_price"
     }
 }
 
