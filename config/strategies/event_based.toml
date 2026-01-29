@@ -1,0 +1,31 @@
+# Event-Based Strategy Configuration
+
+[strategy]
+enabled = false
+
+# Default order size in USD
+default_order_size_usd = "100"
+
+# Signal rules define how to react to external signals
+# Each rule specifies keywords to match and the action to take
+
+# Example rule (uncomment and modify as needed):
+# [[strategy.rules]]
+# name = "Trump News"
+# keywords = ["Trump", "indictment", "arrested"]
+# [strategy.rules.source_filter]
+# webhook_endpoints = ["/news"]
+# [strategy.rules.action]
+# market_keywords = ["Trump", "arrested"]
+# side = "Buy"
+# outcome = "Yes"
+# order_size_usd = "50"
+# max_entry_price = "0.80"
+# [strategy.rules]
+# priority = "High"
+
+# Market mappings (optional) - map keywords to known market IDs
+# [strategy.market_mappings.trump_arrest]
+# market_id = "0x..."
+# yes_token_id = "0x..."
+# no_token_id = "0x..."

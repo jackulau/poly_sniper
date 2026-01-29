@@ -1,0 +1,32 @@
+# Polysniper Configuration
+
+[endpoints]
+clob_rest = "https://clob.polymarket.com"
+clob_ws = "wss://ws-subscriptions-clob.polymarket.com/ws/"
+gamma_api = "https://gamma-api.polymarket.com"
+
+[auth]
+# Environment variable containing the private key
+private_key_env = "POLYMARKET_PRIVATE_KEY"
+# Signature type: 0 = EOA wallet, 1 = Poly Proxy, 2 = Poly Gnosis Safe
+signature_type = 0
+
+[risk]
+# Maximum position size per market in USD
+max_position_size_usd = 5000
+# Maximum single order size in USD
+max_order_size_usd = 500
+# Daily loss limit in USD (stops trading when reached)
+daily_loss_limit_usd = 500
+# Circuit breaker threshold (halts all trading)
+circuit_breaker_loss_usd = 300
+# Maximum orders per minute
+max_orders_per_minute = 60
+
+[execution]
+# Set to true to log orders without actually submitting
+dry_run = true
+# Number of retry attempts for failed orders
+max_retries = 3
+# Delay between retries in milliseconds
+retry_delay_ms = 100

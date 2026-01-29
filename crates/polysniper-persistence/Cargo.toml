@@ -1,0 +1,17 @@
+[package]
+name = "polysniper-persistence"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+polysniper-core = { path = "../polysniper-core" }
+
+tokio.workspace = true
+async-trait.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+rust_decimal.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+chrono.workspace = true

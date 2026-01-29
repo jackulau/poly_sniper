@@ -1,0 +1,27 @@
+# Price Spike Strategy Configuration
+
+[strategy]
+enabled = false
+
+# Minimum price change percentage to trigger (5% = significant spike)
+spike_threshold_pct = "5.0"
+
+# Time window in seconds to measure the price change
+time_window_secs = 10
+
+# Order size in USD for spike trades
+order_size_usd = "100"
+
+# Cooldown period after detecting a spike (prevents repeated triggers)
+cooldown_secs = 60
+
+# Minimum liquidity in USD to trade (avoids illiquid markets)
+min_liquidity_usd = "1000"
+
+# Specific markets to monitor (empty = all markets)
+markets = []
+
+# Trade direction on spike detection:
+# - "momentum": buy on spike up, sell on spike down (follow the move)
+# - "reversion": sell on spike up, buy on spike down (fade the move)
+trade_direction = "momentum"

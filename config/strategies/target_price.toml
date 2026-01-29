@@ -1,0 +1,26 @@
+# Target Price Strategy Configuration
+
+[strategy]
+enabled = false
+
+# Example targets (uncomment and modify as needed)
+# [[strategy.targets]]
+# market_id = "0x1234..."  # Condition ID from Polymarket
+# token_id = "0xabcd..."   # YES or NO token ID
+# outcome = "Yes"
+# target_price = "0.30"    # Trigger when price reaches this level
+# direction = "buy_below"  # "buy_below" or "sell_above"
+# size_usd = "100"
+# order_type = "GTC"
+# one_shot = true          # Only trigger once
+
+# Add your targets here:
+[[strategy.targets]]
+market_id = ""
+token_id = ""
+outcome = "Yes"
+target_price = "0.50"
+direction = "buy_below"
+size_usd = "100"
+order_type = "GTC"
+one_shot = true

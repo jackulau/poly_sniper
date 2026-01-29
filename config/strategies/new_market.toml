@@ -1,0 +1,31 @@
+# New Market Strategy Configuration
+
+[strategy]
+enabled = false
+
+# Order size in USD for new market entries
+order_size_usd = "100"
+
+# Maximum market age in seconds to consider "new" (300 = 5 minutes)
+max_age_secs = 300
+
+# Minimum liquidity before entering (avoids very new markets with no liquidity)
+min_liquidity_usd = "100"
+
+# Keywords to filter markets (empty = all markets)
+# Example: ["Trump", "Biden", "election"]
+keywords = []
+
+# Categories to filter markets (empty = all categories)
+# Example: ["Politics", "Sports", "Crypto"]
+categories = []
+
+# Default side to take on new markets
+# "Buy" = long YES tokens, "Sell" = short YES tokens
+default_side = "Buy"
+
+# Default outcome to trade
+default_outcome = "Yes"
+
+# Maximum price to pay when buying (prevents buying at high prices)
+max_entry_price = "0.50"

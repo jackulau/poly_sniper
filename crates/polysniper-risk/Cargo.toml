@@ -1,0 +1,15 @@
+[package]
+name = "polysniper-risk"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+polysniper-core = { path = "../polysniper-core" }
+
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+rust_decimal.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+chrono.workspace = true
