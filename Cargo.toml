@@ -8,6 +8,7 @@ members = [
     "crates/polysniper-risk",
     "crates/polysniper-observability",
     "crates/polysniper-persistence",
+    "crates/polysniper-backtest",
 ]
 
 [workspace.package]
@@ -90,6 +91,7 @@ polysniper-execution = { path = "crates/polysniper-execution" }
 polysniper-risk = { path = "crates/polysniper-risk" }
 polysniper-observability = { path = "crates/polysniper-observability" }
 polysniper-persistence = { path = "crates/polysniper-persistence" }
+polysniper-backtest = { path = "crates/polysniper-backtest" }
 
 tokio.workspace = true
 tracing.workspace = true
@@ -101,3 +103,6 @@ config.workspace = true
 chrono.workspace = true
 rust_decimal.workspace = true
 uuid.workspace = true
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }

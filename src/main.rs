@@ -2,7 +2,10 @@
 //!
 //! A Rust-based trading bot for Polymarket with multiple sniping strategies.
 
+mod backtest;
+
 use anyhow::{Context, Result};
+use clap::{Parser, Subcommand};
 use polysniper_core::{
     AppConfig, EventBus, OrderExecutor, RiskDecision, RiskValidator, StateManager, StateProvider,
     Strategy, SystemEvent, TradeSignal,
@@ -27,6 +30,47 @@ use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 use tokio::time::interval;
 use tracing::{error, info, warn, Level};
+
+/// Polysniper CLI
+#[derive(Parser)]
+#[command(name = "polysniper")]
+#[command(about = "High-Performance Polymarket Sniper", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Run the trading bot (default)
+    Run,
+    /// Run a backtest with historical data
+    Backtest {
+        /// Strategy to backtest
+        #[arg(short, long, default_value = "target_price")]
+        strategy: String,
+
+        /// Start date (YYYY-MM-DD format)
+        #[arg(long)]
+        from: Option<String>,
+
+        /// End date (YYYY-MM-DD format)
+        #[arg(long)]
+        to: Option<String>,
+
+        /// Initial capital in USD
+        #[arg(long, default_value = "10000")]
+        capital: f64,
+
+        /// Database path
+        #[arg(long, default_value = "data/polysniper.db")]
+        db_path: String,
+
+        /// Output format (text, json, csv)
+        #[arg(long, default_value = "text")]
+        output: String,
+    },
+}
 
 /// Configuration file paths
 const DEFAULT_CONFIG_PATH: &str = "config/default.toml";
@@ -674,7 +718,24 @@ async fn main() -> Result<()> {
 
     init_logging(log_format, log_level);
 
-    // Run application
-    let mut app = App::new().await?;
-    app.run().await
+    // Parse CLI
+    let cli = Cli::parse();
+
+    match cli.command {
+        Some(Commands::Backtest {
+            strategy,
+            from,
+            to,
+            capital,
+            db_path,
+            output,
+        }) => {
+            backtest::run_backtest(&strategy, from, to, capital, &db_path, &output).await
+        }
+        Some(Commands::Run) | None => {
+            // Run main application
+            let mut app = App::new().await?;
+            app.run().await
+        }
+    }
 }
