@@ -303,6 +303,108 @@ impl Default for ExecutionConfig {
     }
 }
 
+/// Persistence configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistenceConfig {
+    pub enabled: bool,
+    pub db_path: String,
+    pub price_snapshot_interval_secs: u64,
+    pub max_price_snapshots: i64,
+}
+
+impl Default for PersistenceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            db_path: "data/polysniper.db".to_string(),
+            price_snapshot_interval_secs: 60,
+            max_price_snapshots: 10000,
+        }
+    }
+}
+
+/// Metrics configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricsConfig {
+    pub enabled: bool,
+    pub port: u16,
+    pub collection_interval_secs: u64,
+}
+
+impl Default for MetricsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            port: 9090,
+            collection_interval_secs: 60,
+        }
+    }
+}
+
+/// Slack alerting configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlackAlertConfig {
+    pub enabled: bool,
+    pub webhook_url: String,
+    pub channel: Option<String>,
+    pub username: Option<String>,
+    pub icon_emoji: Option<String>,
+}
+
+impl Default for SlackAlertConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            webhook_url: String::new(),
+            channel: Some("#polysniper-alerts".to_string()),
+            username: Some("Polysniper".to_string()),
+            icon_emoji: Some(":chart_with_upwards_trend:".to_string()),
+        }
+    }
+}
+
+/// Telegram alerting configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramAlertConfig {
+    pub enabled: bool,
+    pub bot_token: String,
+    pub chat_id: String,
+    pub parse_mode: Option<String>,
+}
+
+impl Default for TelegramAlertConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_token: String::new(),
+            chat_id: String::new(),
+            parse_mode: Some("HTML".to_string()),
+        }
+    }
+}
+
+/// Alerting configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlertingConfig {
+    pub enabled: bool,
+    pub min_level: String,
+    pub rate_limit_seconds: u64,
+    pub slack: SlackAlertConfig,
+    pub telegram: TelegramAlertConfig,
+}
+
+impl Default for AlertingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            min_level: "warning".to_string(),
+            rate_limit_seconds: 60,
+            slack: SlackAlertConfig::default(),
+            telegram: TelegramAlertConfig::default(),
+        }
+    }
+}
+
 /// Main application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -310,6 +412,12 @@ pub struct AppConfig {
     pub auth: AuthConfig,
     pub risk: RiskConfig,
     pub execution: ExecutionConfig,
+    #[serde(default)]
+    pub persistence: PersistenceConfig,
+    #[serde(default)]
+    pub metrics: MetricsConfig,
+    #[serde(default)]
+    pub alerting: AlertingConfig,
 }
 
 impl Default for AppConfig {
@@ -319,6 +427,9 @@ impl Default for AppConfig {
             auth: AuthConfig::default(),
             risk: RiskConfig::default(),
             execution: ExecutionConfig::default(),
+            persistence: PersistenceConfig::default(),
+            metrics: MetricsConfig::default(),
+            alerting: AlertingConfig::default(),
         }
     }
 }

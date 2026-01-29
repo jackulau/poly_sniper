@@ -1,12 +1,13 @@
 //! Polysniper Persistence
 //!
-//! Database and state persistence (placeholder for Phase 5).
+//! SQLite database persistence for trade history, orders, and strategy state.
 
-// TODO: Implement SQLite persistence in Phase 5
-// - Trade history
-// - Order log
-// - Strategy state recovery
+mod database;
+mod error;
+mod models;
+mod repositories;
 
-pub fn placeholder() {
-    // Placeholder to make the crate compile
-}
+pub use database::Database;
+pub use error::{PersistenceError, Result};
+pub use models::*;
+pub use repositories::*;

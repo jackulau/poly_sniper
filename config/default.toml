@@ -30,3 +30,47 @@ dry_run = true
 max_retries = 3
 # Delay between retries in milliseconds
 retry_delay_ms = 100
+
+# Phase 5: SQLite Persistence
+[persistence]
+# Whether persistence is enabled
+enabled = true
+# Path to SQLite database file
+db_path = "data/polysniper.db"
+# Price snapshot interval in seconds
+price_snapshot_interval_secs = 60
+# Maximum price snapshots to keep per token
+max_price_snapshots = 10000
+
+# Phase 6: Prometheus Metrics
+[metrics]
+# Whether metrics are enabled
+enabled = true
+# Port for metrics HTTP server (accessible at http://localhost:9090/metrics)
+port = 9090
+# Collection interval in seconds
+collection_interval_secs = 60
+
+# Phase 7: Alerting
+[alerting]
+# Whether alerting is enabled
+enabled = true
+# Minimum alert level to send (info, warning, critical)
+min_level = "warning"
+# Rate limit between duplicate alerts in seconds
+rate_limit_seconds = 60
+
+# Slack webhook configuration
+[alerting.slack]
+enabled = false
+webhook_url = ""
+channel = "#polysniper-alerts"
+username = "Polysniper"
+icon_emoji = ":chart_with_upwards_trend:"
+
+# Telegram bot configuration
+[alerting.telegram]
+enabled = false
+bot_token = ""
+chat_id = ""
+parse_mode = "HTML"

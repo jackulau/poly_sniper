@@ -67,6 +67,16 @@ config = "0.14"
 # Testing
 criterion = "0.5"
 
+# Metrics
+prometheus = "0.13"
+lazy_static = "1.4"
+
+# HTTP client for alerting
+ureq = { version = "2.9", features = ["json"] }
+
+# UUID generation
+uuid = { version = "1.8", features = ["v4"] }
+
 [package]
 name = "polysniper"
 version.workspace = true
@@ -89,3 +99,5 @@ toml.workspace = true
 anyhow.workspace = true
 config.workspace = true
 chrono.workspace = true
+rust_decimal.workspace = true
+uuid.workspace = true

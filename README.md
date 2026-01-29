@@ -262,7 +262,67 @@ cargo doc --open
 - **polysniper-strategies**: Trading strategy implementations
 - **polysniper-execution**: Order building and submission
 - **polysniper-risk**: Risk validation and circuit breakers
-- **polysniper-observability**: Structured logging
+- **polysniper-observability**: Structured logging, Prometheus metrics, alerting
+- **polysniper-persistence**: SQLite database for trade history and state
+
+## Observability & Monitoring
+
+### Prometheus Metrics (Phase 6)
+
+Metrics are exposed on port 9090 by default. Available at `http://localhost:9090/metrics`.
+
+**Key Metrics:**
+- `polysniper_trades_executed_total` - Trade counts by strategy and outcome
+- `polysniper_signals_generated_total` - Signal generation rates
+- `polysniper_risk_rejections_total` - Risk manager rejections
+- `polysniper_event_processing_duration_seconds` - Processing latency
+- `polysniper_daily_pnl_usd` - Current daily P&L
+
+```toml
+[metrics]
+enabled = true
+port = 9090
+collection_interval_secs = 60
+```
+
+### Alerting (Phase 7)
+
+Configure Slack and/or Telegram notifications for critical events.
+
+```toml
+[alerting]
+enabled = true
+min_level = "warning"  # info, warning, critical
+
+[alerting.slack]
+enabled = true
+webhook_url = "https://hooks.slack.com/services/..."
+channel = "#polysniper-alerts"
+
+[alerting.telegram]
+enabled = true
+bot_token = "123456:ABC..."
+chat_id = "-100123456789"
+```
+
+**Alert Types:**
+- Circuit breaker triggered
+- Connection lost
+- High daily loss warnings
+- Strategy errors
+- New market discoveries
+
+### Persistence (Phase 5)
+
+Trade history, orders, and strategy state are persisted to SQLite.
+
+```toml
+[persistence]
+enabled = true
+db_path = "data/polysniper.db"
+price_snapshot_interval_secs = 60
+max_price_snapshots = 10000
+```
 
 ## Roadmap
 
@@ -270,9 +330,9 @@ cargo doc --open
 - [x] Phase 2: All 4 trading strategies
 - [x] Phase 3: Risk management
 - [x] Phase 4: Observability (logging)
-- [ ] Phase 5: Persistence (SQLite)
-- [ ] Phase 6: Metrics (Prometheus)
-- [ ] Phase 7: Alerting (Slack/Telegram)
+- [x] Phase 5: Persistence (SQLite)
+- [x] Phase 6: Metrics (Prometheus)
+- [x] Phase 7: Alerting (Slack/Telegram)
 
 ## Disclaimer
 
