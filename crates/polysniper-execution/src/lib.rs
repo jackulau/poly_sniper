@@ -1,15 +1,16 @@
 //! Polysniper Execution
 //!
-//! Order building and submission to CLOB.
+//! Order building, submission to CLOB, and execution algorithms (TWAP/VWAP).
 
-pub mod gas_optimizer;
-pub mod gas_tracker;
+pub mod algorithms;
 pub mod order_builder;
 pub mod queue_estimator;
 pub mod submitter;
 
-pub use gas_optimizer::{GasOptimizer, GasOptimizerHandle, QueuedOrder};
-pub use gas_tracker::{GasHistoryStats, GasTracker};
+pub use algorithms::{
+    AlgorithmConfig, AlgorithmType, ChildOrder, ExecutionStats, TwapConfig, TwapExecutor,
+    VolumeProfile, VwapConfig, VwapExecutor,
+};
 pub use order_builder::OrderBuilder;
 pub use queue_estimator::QueueEstimator;
 pub use submitter::OrderSubmitter;
