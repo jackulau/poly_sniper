@@ -2,10 +2,11 @@
 //!
 //! A Rust-based trading bot for Polymarket with multiple sniping strategies.
 
-mod backtest;
+mod commands;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use commands::StatsCommand;
 use polysniper_core::{
     AppConfig, EventBus, HeartbeatEvent, OrderExecutor, RiskDecision, RiskValidator, StateManager,
     StateProvider, Strategy, SystemEvent, TradeSignal,
@@ -96,6 +97,23 @@ enum Commands {
         #[arg(short, long)]
         market: Option<String>,
     },
+}
+
+/// Polysniper - High-Performance Polymarket Trading Bot
+#[derive(Parser)]
+#[command(name = "polysniper")]
+#[command(about = "A high-performance trading bot for Polymarket", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Run the trading bot (default)
+    Run,
+    /// View statistics and performance metrics
+    Stats(StatsCommand),
 }
 
 /// Configuration file paths
@@ -1128,11 +1146,12 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Tui { market }) => {
-            run_tui(market).await
+        Some(Commands::Stats(stats_cmd)) => {
+            // Stats command doesn't need full logging setup
+            stats_cmd.run().await
         }
         Some(Commands::Run) | None => {
-            // Initialize logging
+            // Initialize logging for the trading bot
             let log_format = std::env::var("LOG_FORMAT")
                 .map(|f| match f.as_str() {
                     "json" => LogFormat::Json,
@@ -1158,142 +1177,4 @@ async fn main() -> Result<()> {
             app.run().await
         }
     }
-}
-
-/// Run the TUI mode for orderbook visualization
-async fn run_tui(market_id: Option<String>) -> Result<()> {
-    use crossterm::{
-        event::{DisableMouseCapture, EnableMouseCapture},
-        execute,
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-    };
-    use polysniper_tui::{App as TuiApp, Event, EventHandler, draw};
-    use ratatui::prelude::*;
-    use std::io;
-
-    // Load config to get endpoints
-    let config = App::load_config()?;
-
-    // Initialize Gamma client to fetch markets
-    let gamma_client = GammaClient::new(config.endpoints.gamma_api.clone());
-
-    // Fetch available markets
-    let (markets, _) = gamma_client
-        .fetch_markets(Some(50), None)
-        .await
-        .context("Failed to fetch markets from Gamma API")?;
-
-    if markets.is_empty() {
-        anyhow::bail!("No markets available");
-    }
-
-    // Set up terminal
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
-    // Create TUI app state
-    let mut tui_app = TuiApp::new();
-    tui_app.set_available_markets(markets);
-    tui_app.set_connected(true);
-
-    // If a specific market was requested, try to select it
-    if let Some(ref market_id) = market_id {
-        if let Some(idx) = tui_app
-            .available_markets
-            .iter()
-            .position(|m| m.condition_id == *market_id || m.yes_token_id == *market_id)
-        {
-            tui_app.selected_market_index = idx;
-            tui_app.handle_action(polysniper_tui::AppAction::None); // Trigger selection
-        }
-    }
-
-    // Set up event bus and WebSocket manager for real-time data
-    let event_bus = Arc::new(BroadcastEventBus::new());
-    let ws_manager = WsManager::new(config.endpoints.clob_ws.clone(), event_bus.sender());
-
-    // Subscribe to orderbook updates for the current market
-    if let Some(ref market) = tui_app.current_market {
-        ws_manager
-            .subscribe_token(market.yes_token_id.clone(), market.condition_id.clone())
-            .await;
-    }
-
-    // Spawn WebSocket task
-    let ws_handle = tokio::spawn(async move {
-        if let Err(e) = ws_manager.run().await {
-            tracing::error!("WebSocket error: {}", e);
-        }
-    });
-
-    // Subscribe to events
-    let mut event_rx = event_bus.subscribe();
-
-    // Event handler for keyboard input
-    let event_handler = EventHandler::new(100); // 10 FPS
-
-    // Main TUI loop
-    let result = loop {
-        // Draw the UI
-        terminal.draw(|f| draw(f, &tui_app))?;
-
-        // Check for WebSocket events (non-blocking)
-        while let Ok(event) = event_rx.try_recv() {
-            match event {
-                SystemEvent::OrderbookUpdate(e) => {
-                    // Only update if this is for our current market's token
-                    if let Some(ref market) = tui_app.current_market {
-                        if e.token_id == market.yes_token_id {
-                            tui_app.update_orderbook(e.orderbook);
-                        }
-                    }
-                }
-                SystemEvent::TradeExecuted(e) => {
-                    tui_app.add_trade(polysniper_tui::TradeRecord {
-                        side: e.signal.side,
-                        price: e.executed_price,
-                        size: e.executed_size,
-                        timestamp: e.timestamp,
-                    });
-                }
-                _ => {}
-            }
-        }
-
-        // Handle keyboard input
-        match event_handler.next_event() {
-            Ok(Event::Key(key)) => {
-                let action = EventHandler::key_to_action(key);
-                tui_app.handle_action(action);
-
-                if tui_app.should_quit {
-                    break Ok(());
-                }
-            }
-            Ok(Event::Resize(_, _)) => {
-                // Terminal will redraw on next iteration
-            }
-            Ok(Event::Tick) => {
-                // Regular tick, nothing special to do
-            }
-            Err(e) => {
-                break Err(e);
-            }
-        }
-    };
-
-    // Clean up
-    ws_handle.abort();
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
-
-    result
 }

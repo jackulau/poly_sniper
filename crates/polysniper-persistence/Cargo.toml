@@ -18,4 +18,5 @@ tracing.workspace = true
 chrono.workspace = true
 
 [dev-dependencies]
+uuid.workspace = true
 rust_decimal_macros.workspace = true
