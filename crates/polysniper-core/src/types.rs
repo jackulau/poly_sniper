@@ -405,6 +405,30 @@ impl Default for AlertingConfig {
     }
 }
 
+/// Webhook server configuration for receiving ML predictions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookConfig {
+    /// Whether the webhook server is enabled
+    pub enabled: bool,
+    /// Host to bind the server to
+    pub host: String,
+    /// Port to listen on
+    pub port: u16,
+    /// Optional API key for authentication (checked via X-API-Key header)
+    pub api_key: Option<String>,
+}
+
+impl Default for WebhookConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+            api_key: None,
+        }
+    }
+}
+
 /// Main application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -418,6 +442,8 @@ pub struct AppConfig {
     pub metrics: MetricsConfig,
     #[serde(default)]
     pub alerting: AlertingConfig,
+    #[serde(default)]
+    pub webhook: WebhookConfig,
 }
 
 impl Default for AppConfig {
@@ -430,6 +456,7 @@ impl Default for AppConfig {
             persistence: PersistenceConfig::default(),
             metrics: MetricsConfig::default(),
             alerting: AlertingConfig::default(),
+            webhook: WebhookConfig::default(),
         }
     }
 }

@@ -19,3 +19,8 @@ anyhow.workspace = true
 tracing.workspace = true
 chrono.workspace = true
 urlencoding = "2.1"
+
+# Webhook server dependencies
+axum.workspace = true
+tower.workspace = true
+uuid.workspace = true

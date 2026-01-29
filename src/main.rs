@@ -7,7 +7,7 @@ use polysniper_core::{
     AppConfig, EventBus, OrderExecutor, RiskDecision, RiskValidator, StateManager, StateProvider,
     Strategy, SystemEvent, TradeSignal,
 };
-use polysniper_data::{BroadcastEventBus, GammaClient, MarketCache, WsManager};
+use polysniper_data::{BroadcastEventBus, GammaClient, MarketCache, WebhookServer, WsManager};
 use polysniper_execution::{OrderBuilder, OrderSubmitter};
 use polysniper_observability::{
     init_logging, record_event_processing, record_new_market, record_order, record_risk_rejection,
@@ -245,6 +245,24 @@ impl App {
         if self.config.metrics.enabled {
             let _metrics_handle = start_metrics_server(self.config.metrics.port).await;
             info!(port = %self.config.metrics.port, "Metrics server started");
+        }
+
+        // Start webhook server for ML predictions
+        if self.config.webhook.enabled {
+            let webhook_server =
+                WebhookServer::new(self.config.webhook.clone(), self.event_bus.clone());
+            match webhook_server.start().await {
+                Ok(_handle) => {
+                    info!(
+                        host = %self.config.webhook.host,
+                        port = %self.config.webhook.port,
+                        "Webhook server started"
+                    );
+                }
+                Err(e) => {
+                    error!(error = %e, "Failed to start webhook server");
+                }
+            }
         }
 
         // Create shutdown signal
