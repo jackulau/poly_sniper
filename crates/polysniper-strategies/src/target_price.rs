@@ -96,12 +96,10 @@ impl TargetPriceStrategy {
         }
 
         // Initialize synchronously by creating a new RwLock
-        let strategy = Self {
+        Self {
             targets: Arc::new(RwLock::new(targets_map)),
             ..strategy
-        };
-
-        strategy
+        }
     }
 
     /// Add a price target
@@ -178,7 +176,8 @@ impl Strategy for TargetPriceStrategy {
 
                                 // Check if already triggered (for one-shot)
                                 let triggered = self.triggered.read().await;
-                                if target.one_shot && triggered.get(&key).copied().unwrap_or(false) {
+                                if target.one_shot && triggered.get(&key).copied().unwrap_or(false)
+                                {
                                     continue;
                                 }
                                 drop(triggered);
