@@ -2,6 +2,7 @@ use crate::types::{Market, MarketId, Orderbook, Position, QueuePosition, TokenId
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// System-wide event types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,8 +37,8 @@ pub enum SystemEvent {
     /// Heartbeat for health checks
     Heartbeat(HeartbeatEvent),
 
-    /// Gas price update
-    GasPriceUpdate(GasPriceUpdateEvent),
+    /// Feed item received from Twitter, RSS, etc.
+    FeedItemReceived(FeedItemReceivedEvent),
 }
 
 impl SystemEvent {
@@ -54,7 +55,7 @@ impl SystemEvent {
             SystemEvent::QueueUpdate(_) => "queue_update",
             SystemEvent::ConnectionStatus(_) => "connection_status",
             SystemEvent::Heartbeat(_) => "heartbeat",
-            SystemEvent::GasPriceUpdate(_) => "gas_price_update",
+            SystemEvent::FeedItemReceived(_) => "feed_item_received",
         }
     }
 
@@ -71,7 +72,7 @@ impl SystemEvent {
             SystemEvent::QueueUpdate(e) => e.timestamp,
             SystemEvent::ConnectionStatus(e) => e.timestamp,
             SystemEvent::Heartbeat(e) => e.timestamp,
-            SystemEvent::GasPriceUpdate(e) => e.timestamp,
+            SystemEvent::FeedItemReceived(e) => e.received_at,
         }
     }
 
@@ -88,7 +89,7 @@ impl SystemEvent {
             SystemEvent::QueueUpdate(e) => Some(&e.market_id),
             SystemEvent::ConnectionStatus(_) => None,
             SystemEvent::Heartbeat(_) => None,
-            SystemEvent::GasPriceUpdate(_) => None,
+            SystemEvent::FeedItemReceived(_) => None,
         }
     }
 }
@@ -232,17 +233,60 @@ pub struct HeartbeatEvent {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Queue position update event for a tracked order
+/// Source of a feed item
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum FeedItemSource {
+    Twitter {
+        account: Option<String>,
+        query: Option<String>,
+    },
+    Rss {
+        feed_url: String,
+        feed_title: Option<String>,
+    },
+}
+
+impl FeedItemSource {
+    pub fn source_name(&self) -> &'static str {
+        match self {
+            FeedItemSource::Twitter { .. } => "twitter",
+            FeedItemSource::Rss { .. } => "rss",
+        }
+    }
+}
+
+/// A feed item from any source (Twitter, RSS, etc.)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QueueUpdateEvent {
-    /// Order ID being tracked
-    pub order_id: String,
-    /// Token ID for the order
-    pub token_id: TokenId,
-    /// Market ID for the order
-    pub market_id: MarketId,
-    /// Updated queue position information
-    pub position: QueuePosition,
-    /// When this update was calculated
-    pub timestamp: DateTime<Utc>,
+pub struct FeedItem {
+    /// Unique identifier for this item (from source)
+    pub id: String,
+    /// Source of this feed item
+    pub source: FeedItemSource,
+    /// Main content/text of the item
+    pub content: String,
+    /// Title (for RSS items)
+    pub title: Option<String>,
+    /// Author/username
+    pub author: Option<String>,
+    /// URL to the original content
+    pub url: Option<String>,
+    /// When the content was published
+    pub published_at: DateTime<Utc>,
+    /// When we received this item
+    pub received_at: DateTime<Utc>,
+    /// Content hash for deduplication
+    pub content_hash: String,
+    /// Additional metadata
+    pub metadata: HashMap<String, serde_json::Value>,
+    /// Matched keywords that triggered this item
+    pub matched_keywords: Vec<String>,
+}
+
+/// Feed item received event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeedItemReceivedEvent {
+    /// The feed item that was received
+    pub item: FeedItem,
+    /// When the item was received
+    pub received_at: DateTime<Utc>,
 }

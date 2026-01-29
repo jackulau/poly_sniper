@@ -114,16 +114,44 @@ bot_token = ""
 chat_id = ""
 parse_mode = "HTML"
 
-# Resolution Tracking - Monitor market resolution events
-[resolution]
-# Whether resolution tracking is enabled
-enabled = true
-# Poll interval for checking market status in seconds
-poll_interval_secs = 30
-# Threshold for "approaching" status in seconds (24 hours)
-approaching_threshold_secs = 86400
-# Threshold for "imminent" status in seconds (1 hour)
-imminent_threshold_secs = 3600
-# Warning thresholds to emit events at (in seconds before resolution)
-# Emits warnings at 24h, 1h, and 15m before resolution
-warning_thresholds_secs = [86400, 3600, 900]
+# Feed Ingestion for Sentiment Analysis
+[feeds]
+# Whether feed ingestion is enabled
+enabled = false
+# Global keywords to track across all sources
+keywords = ["polymarket", "prediction market", "kalshi"]
+# Maximum items to keep in deduplication cache
+dedup_cache_size = 10000
+
+# Twitter API configuration
+[feeds.twitter]
+enabled = false
+# Environment variable containing the Twitter Bearer Token
+bearer_token_env = "TWITTER_BEARER_TOKEN"
+# Polling interval in seconds (min 60 to respect rate limits)
+poll_interval_secs = 60
+# Maximum results per query (max 100)
+max_results = 100
+
+# Twitter search queries to monitor
+[[feeds.twitter.queries]]
+query = "polymarket"
+include_retweets = false
+
+[[feeds.twitter.queries]]
+query = "prediction market"
+include_retweets = false
+
+# RSS/Atom feed configuration
+[feeds.rss]
+enabled = false
+# Polling interval in seconds
+poll_interval_secs = 300
+# Request timeout in seconds
+timeout_secs = 30
+
+# RSS feeds to monitor
+# [[feeds.rss.feeds]]
+# url = "https://example.com/feed.xml"
+# name = "Example Feed"
+# keywords = []  # Empty means all items
