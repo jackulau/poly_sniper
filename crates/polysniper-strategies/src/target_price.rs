@@ -178,7 +178,8 @@ impl Strategy for TargetPriceStrategy {
 
                                 // Check if already triggered (for one-shot)
                                 let triggered = self.triggered.read().await;
-                                if target.one_shot && triggered.get(&key).copied().unwrap_or(false) {
+                                if target.one_shot && triggered.get(&key).copied().unwrap_or(false)
+                                {
                                     continue;
                                 }
                                 drop(triggered);

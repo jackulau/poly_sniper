@@ -332,7 +332,11 @@ impl FillManager {
         let removed = before - orders.len();
 
         if removed > 0 {
-            debug!(removed = removed, remaining = orders.len(), "Cleaned up completed orders");
+            debug!(
+                removed = removed,
+                remaining = orders.len(),
+                "Cleaned up completed orders"
+            );
         }
 
         removed

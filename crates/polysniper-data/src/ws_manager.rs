@@ -116,7 +116,10 @@ impl WsManager {
 
     /// Subscribe to a token's book and price updates
     pub async fn subscribe_token(&self, token_id: TokenId, market_id: MarketId) {
-        self.subscribed_tokens.write().await.insert(token_id.clone());
+        self.subscribed_tokens
+            .write()
+            .await
+            .insert(token_id.clone());
         self.market_token_map
             .write()
             .await
@@ -162,7 +165,13 @@ impl WsManager {
         info!("WebSocket connected");
 
         // Subscribe to all tracked tokens
-        let tokens: Vec<String> = self.subscribed_tokens.read().await.iter().cloned().collect();
+        let tokens: Vec<String> = self
+            .subscribed_tokens
+            .read()
+            .await
+            .iter()
+            .cloned()
+            .collect();
         if !tokens.is_empty() {
             let book_sub = SubscribeRequest::book(tokens.clone());
             let price_sub = SubscribeRequest::price(tokens);
@@ -245,8 +254,7 @@ impl WsManager {
                             self.market_token_map.read().await.get(&asset_id).cloned()
                         {
                             let event = SystemEvent::PriceChange(PriceChangeEvent::new(
-                                market_id,
-                                asset_id,
+                                market_id, asset_id,
                                 None, // Old price would need state tracking
                                 new_price,
                             ));
@@ -262,14 +270,13 @@ impl WsManager {
                     timestamp: _,
                 } => {
                     let orderbook = self.parse_orderbook(&asset_id, &market, bids, asks);
-                    let event = SystemEvent::OrderbookUpdate(
-                        polysniper_core::OrderbookUpdateEvent {
+                    let event =
+                        SystemEvent::OrderbookUpdate(polysniper_core::OrderbookUpdateEvent {
                             market_id: market,
                             token_id: asset_id,
                             orderbook,
                             timestamp: chrono::Utc::now(),
-                        },
-                    );
+                        });
                     let _ = self.event_tx.send(event);
                 }
                 WsMessage::BookDelta {
@@ -281,14 +288,13 @@ impl WsManager {
                     // Delta updates would need to be applied to existing orderbook
                     // For simplicity, treating as full update
                     let orderbook = self.parse_orderbook(&asset_id, &market, bids, asks);
-                    let event = SystemEvent::OrderbookUpdate(
-                        polysniper_core::OrderbookUpdateEvent {
+                    let event =
+                        SystemEvent::OrderbookUpdate(polysniper_core::OrderbookUpdateEvent {
                             market_id: market,
                             token_id: asset_id,
                             orderbook,
                             timestamp: chrono::Utc::now(),
-                        },
-                    );
+                        });
                     let _ = self.event_tx.send(event);
                 }
                 WsMessage::Subscribed { channel, assets } => {

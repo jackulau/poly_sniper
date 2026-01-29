@@ -246,9 +246,9 @@ mod tests {
     #[tokio::test]
     async fn test_poll_once_order_not_found() {
         let manager = Arc::new(FillManager::new(create_test_config()));
-        let executor = Arc::new(MockOrderExecutor::new(vec![Err(
-            ExecutionError::NotFound("order1".to_string()),
-        )]));
+        let executor = Arc::new(MockOrderExecutor::new(vec![Err(ExecutionError::NotFound(
+            "order1".to_string(),
+        ))]));
 
         manager.track_order(create_test_order()).await;
 

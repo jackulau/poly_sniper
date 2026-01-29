@@ -5,8 +5,8 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use polysniper_core::{
-    ExternalSignalEvent, MarketId, OrderType, Outcome, Priority, Side, SignalSource,
-    StateProvider, Strategy, StrategyError, SystemEvent, TradeSignal,
+    ExternalSignalEvent, MarketId, OrderType, Outcome, Priority, Side, SignalSource, StateProvider,
+    Strategy, StrategyError, SystemEvent, TradeSignal,
 };
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -167,7 +167,8 @@ impl EventBasedStrategy {
         let content_lower = signal.content.to_lowercase();
 
         // Also check signal keywords
-        let signal_keywords: Vec<String> = signal.keywords.iter().map(|k| k.to_lowercase()).collect();
+        let signal_keywords: Vec<String> =
+            signal.keywords.iter().map(|k| k.to_lowercase()).collect();
 
         keywords.iter().any(|kw| {
             let kw_lower = kw.to_lowercase();
@@ -204,22 +205,14 @@ impl EventBasedStrategy {
         // If signal already has market ID
         if let Some(market_id) = &signal.market_id {
             if let Some(market) = state.get_market(market_id).await {
-                return Some((
-                    market.condition_id,
-                    market.yes_token_id,
-                    market.no_token_id,
-                ));
+                return Some((market.condition_id, market.yes_token_id, market.no_token_id));
             }
         }
 
         // If action has explicit market ID
         if let Some(market_id) = &action.market_id {
             if let Some(market) = state.get_market(market_id).await {
-                return Some((
-                    market.condition_id,
-                    market.yes_token_id,
-                    market.no_token_id,
-                ));
+                return Some((market.condition_id, market.yes_token_id, market.no_token_id));
             }
         }
 
@@ -245,11 +238,7 @@ impl EventBasedStrategy {
                     .iter()
                     .any(|kw| question_lower.contains(&kw.to_lowercase()))
                 {
-                    return Some((
-                        market.condition_id,
-                        market.yes_token_id,
-                        market.no_token_id,
-                    ));
+                    return Some((market.condition_id, market.yes_token_id, market.no_token_id));
                 }
             }
         }
@@ -314,17 +303,19 @@ impl Strategy for EventBasedStrategy {
         );
 
         // Resolve market
-        let (market_id, yes_token_id, no_token_id) =
-            match self.resolve_market(&rule.action, external_signal, state).await {
-                Some(m) => m,
-                None => {
-                    warn!(
-                        rule_name = %rule.name,
-                        "Could not resolve market for signal"
-                    );
-                    return Ok(signals);
-                }
-            };
+        let (market_id, yes_token_id, no_token_id) = match self
+            .resolve_market(&rule.action, external_signal, state)
+            .await
+        {
+            Some(m) => m,
+            None => {
+                warn!(
+                    rule_name = %rule.name,
+                    "Could not resolve market for signal"
+                );
+                return Ok(signals);
+            }
+        };
 
         let token_id = match rule.action.outcome {
             Outcome::Yes => yes_token_id,
@@ -378,7 +369,11 @@ impl Strategy for EventBasedStrategy {
             order_type: OrderType::Fok,
             priority: rule.priority,
             timestamp: Utc::now(),
-            reason: format!("External signal matched rule '{}': {}", rule.name, truncate(&external_signal.content, 100)),
+            reason: format!(
+                "External signal matched rule '{}': {}",
+                rule.name,
+                truncate(&external_signal.content, 100)
+            ),
             metadata: serde_json::json!({
                 "rule_name": rule.name,
                 "signal_type": external_signal.signal_type,

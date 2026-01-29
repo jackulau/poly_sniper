@@ -118,10 +118,11 @@ impl<'a> OrderRepository<'a> {
 
     /// Get pending orders count
     pub async fn pending_count(&self) -> Result<i64> {
-        let row =
-            sqlx::query("SELECT COUNT(*) as count FROM orders WHERE status IN ('pending', 'submitted')")
-                .fetch_one(self.db.pool())
-                .await?;
+        let row = sqlx::query(
+            "SELECT COUNT(*) as count FROM orders WHERE status IN ('pending', 'submitted')",
+        )
+        .fetch_one(self.db.pool())
+        .await?;
 
         Ok(row.get::<i64, _>("count"))
     }
