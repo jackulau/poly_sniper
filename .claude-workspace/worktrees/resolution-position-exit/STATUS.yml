@@ -1,0 +1,11 @@
+id: resolution-position-exit
+status: complete
+branch: polysniper/resolution-position-exit
+worktree_path: /Users/jacklau/Polysniper/.claude-workspace/worktrees/resolution-position-exit/worktree
+assigned_to: claude
+started_at: 2026-01-29T00:00:00Z
+completed_at: 2026-01-29T08:15:45Z
+dependencies_met: true
+conflicts: []
+commit_sha: c6e24f6fad44a1959e278339afceee758a00bce1
+tests_passing: true

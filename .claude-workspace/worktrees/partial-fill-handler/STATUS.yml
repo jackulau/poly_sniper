@@ -1,0 +1,11 @@
+id: partial-fill-handler
+status: complete
+branch: polysniper/partial-fill-handler
+worktree_path: .claude-workspace/worktrees/partial-fill-handler/worktree
+assigned_to: claude
+started_at: 2026-01-29T02:28:21Z
+completed_at: 2026-01-29T02:28:21Z
+dependencies_met: true
+conflicts: []
+commit_sha: 3858be9c2068975380470b2238532f22c69d12c5
+tests_passing: true

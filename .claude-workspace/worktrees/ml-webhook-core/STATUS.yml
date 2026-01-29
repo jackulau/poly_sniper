@@ -1,0 +1,11 @@
+id: ml-webhook-core
+status: complete
+branch: polysniper/ml-webhook-core
+worktree_path: /Users/jacklau/Polysniper/.claude-workspace/worktrees/ml-webhook-core/worktree
+assigned_to: null
+started_at: 2026-01-28T00:00:00Z
+completed_at: 2026-01-28T00:00:00Z
+dependencies_met: true
+conflicts: []
+commit_sha: f995a2a816c0252e4059aa9f3a98461acd15f2d2
+tests_passing: true

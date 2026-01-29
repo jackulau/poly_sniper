@@ -1,0 +1,11 @@
+id: adaptive-order-sizing
+status: complete
+branch: polysniper/adaptive-order-sizing
+worktree_path: /Users/jacklau/Polysniper/.claude-workspace/worktrees/adaptive-order-sizing/worktree
+assigned_to: null
+started_at: null
+completed_at: 2026-01-29T01:21:24Z
+dependencies_met: true
+conflicts: []
+commit_sha: b0a939f37f8b2230a5ed18608ed4e250528657c2
+tests_passing: true

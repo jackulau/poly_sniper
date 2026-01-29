@@ -1,0 +1,11 @@
+id: pnl-tracking-sqlite
+status: complete
+branch: polysniper/pnl-tracking-sqlite
+worktree_path: .claude-workspace/worktrees/pnl-tracking-sqlite/worktree
+assigned_to: claude
+started_at: 2026-01-28T00:00:00Z
+completed_at: 2026-01-28T00:30:00Z
+dependencies_met: true
+conflicts: []
+commit_sha: 9e2b537
+tests_passing: true

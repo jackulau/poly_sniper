@@ -1,0 +1,11 @@
+id: correlation-limits
+status: complete
+branch: polysniper/correlation-limits
+worktree_path: .claude-workspace/worktrees/correlation-limits/worktree
+assigned_to: null
+started_at: null
+completed_at: 2026-01-28
+dependencies_met: true
+conflicts: []
+commit_sha: df13e7253f663def843b86da17057e0f85a8c43d
+tests_passing: true

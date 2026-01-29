@@ -1,0 +1,11 @@
+id: orderbook-visualization
+status: complete
+branch: polysniper/orderbook-visualization
+worktree_path: .claude-workspace/worktrees/orderbook-visualization/worktree
+assigned_to: claude
+started_at: 2026-01-28T00:00:00Z
+completed_at: 2026-01-28T00:30:00Z
+dependencies_met: true
+conflicts: []
+commit_sha: a3c4c4a8d87b8d5f4d4335c1b66d6d28c95bbf17
+tests_passing: true

@@ -1,0 +1,11 @@
+id: multi-leg-strategy
+status: complete
+branch: polysniper/multi-leg-strategy
+worktree_path: .claude-workspace/worktrees/multi-leg-strategy/worktree
+assigned_to: claude
+started_at: 2026-01-29T01:56:37Z
+completed_at: 2026-01-29T02:06:01Z
+dependencies_met: true
+conflicts: []
+commit_sha: 23afdcc
+tests_passing: true

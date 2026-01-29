@@ -1,0 +1,11 @@
+id: queue-position-estimation
+status: complete
+branch: polysniper/queue-position-estimation
+worktree_path: /Users/jacklau/Polysniper/.claude-workspace/worktrees/queue-position-estimation/worktree
+assigned_to: null
+started_at: 2026-01-29T05:55:23Z
+completed_at: 2026-01-29T05:55:23Z
+dependencies_met: true
+conflicts: []
+commit_sha: 3bd12cd13b4c1a8d78d187f2f3975c09a00b62de
+tests_passing: true

@@ -1,0 +1,11 @@
+id: discord-notifier-service
+status: complete
+branch: polysniper/discord-notifier-service
+worktree_path: /Users/jacklau/Polysniper/.claude-workspace/worktrees/discord-notifier-service/worktree
+assigned_to: claude
+started_at: 2026-01-28T03:30:00Z
+completed_at: 2026-01-29T01:38:14Z
+dependencies_met: true
+conflicts: []
+commit_sha: 29b2451e30c139a18fb3922af8f02a31caeda7a8
+tests_passing: true

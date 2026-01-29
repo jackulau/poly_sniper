@@ -1,0 +1,11 @@
+id: sentiment-feed-ingestion
+status: complete
+branch: polysniper/sentiment-feed-ingestion
+worktree_path: .claude-workspace/worktrees/sentiment-feed-ingestion/worktree
+assigned_to: claude
+started_at: 2026-01-29T08:17:49Z
+completed_at: 2026-01-29T08:17:49Z
+dependencies_met: true
+conflicts: []
+commit_sha: d7f8f273bb0e7c0a0e46bef927c0bd337b1eafeb
+tests_passing: true

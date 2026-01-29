@@ -1,0 +1,11 @@
+id: resolution-tracker
+status: complete
+branch: polysniper/resolution-tracker
+worktree_path: /Users/jacklau/Polysniper/.claude-workspace/worktrees/resolution-tracker/worktree
+assigned_to: claude
+started_at: 2026-01-28T00:00:00Z
+completed_at: 2026-01-29T04:53:27Z
+dependencies_met: true
+conflicts: []
+commit_sha: dfd9f29edc9e10b152788bb55c33adc838eda1f7
+tests_passing: true

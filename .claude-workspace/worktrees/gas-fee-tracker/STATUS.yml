@@ -1,0 +1,11 @@
+id: gas-fee-tracker
+status: complete
+branch: polysniper/gas-fee-tracker
+worktree_path: /Users/jacklau/Polysniper/.claude-workspace/worktrees/gas-fee-tracker/worktree
+assigned_to: null
+started_at: null
+completed_at: 2026-01-29T01:38:21Z
+dependencies_met: true
+conflicts: []
+commit_sha: b31def300428baadf903456f6bb7b2c255eedfd6
+tests_passing: true

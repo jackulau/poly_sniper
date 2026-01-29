@@ -1,0 +1,9 @@
+id: discord-embed-builder
+status: complete
+branch: polysniper/discord-embed-builder
+worktree_path: .claude-workspace/worktrees/discord-embed-builder/worktree
+completed_at: 2026-01-28T12:00:00Z
+commit_sha: bcfaee9
+tests_passing: true
+dependencies_met: true
+conflicts: []

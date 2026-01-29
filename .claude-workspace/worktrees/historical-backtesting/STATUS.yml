@@ -1,0 +1,11 @@
+id: historical-backtesting
+status: complete
+branch: polysniper/historical-backtesting
+worktree_path: .claude-workspace/worktrees/historical-backtesting/worktree
+assigned_to: claude
+started_at: 2026-01-28T19:38:00Z
+completed_at: 2026-01-29T01:47:59Z
+dependencies_met: true
+conflicts: []
+commit_sha: 38336095e3bd9bd59c65e5eff574c76af95a31e8
+tests_passing: true

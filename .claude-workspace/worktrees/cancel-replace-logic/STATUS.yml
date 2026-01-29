@@ -1,0 +1,11 @@
+id: cancel-replace-logic
+status: complete
+branch: polysniper/cancel-replace-logic
+worktree_path: .claude-workspace/worktrees/cancel-replace-logic/worktree
+assigned_to: claude
+started_at: 2026-01-29T09:28:21Z
+completed_at: 2026-01-29T08:17:00Z
+dependencies_met: true
+conflicts: []
+commit_sha: b62ff16679d62b0b2b2e2f1123b9170d1d75bf96
+tests_passing: true

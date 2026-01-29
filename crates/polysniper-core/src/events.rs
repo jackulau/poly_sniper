@@ -39,6 +39,9 @@ pub enum SystemEvent {
 
     /// Feed item received from Twitter, RSS, etc.
     FeedItemReceived(FeedItemReceivedEvent),
+
+    /// Config file changed
+    ConfigChanged(ConfigChangedEvent),
 }
 
 impl SystemEvent {
@@ -56,6 +59,7 @@ impl SystemEvent {
             SystemEvent::ConnectionStatus(_) => "connection_status",
             SystemEvent::Heartbeat(_) => "heartbeat",
             SystemEvent::FeedItemReceived(_) => "feed_item_received",
+            SystemEvent::ConfigChanged(_) => "config_changed",
         }
     }
 
@@ -73,6 +77,7 @@ impl SystemEvent {
             SystemEvent::ConnectionStatus(e) => e.timestamp,
             SystemEvent::Heartbeat(e) => e.timestamp,
             SystemEvent::FeedItemReceived(e) => e.received_at,
+            SystemEvent::ConfigChanged(e) => e.timestamp,
         }
     }
 
@@ -90,6 +95,7 @@ impl SystemEvent {
             SystemEvent::ConnectionStatus(_) => None,
             SystemEvent::Heartbeat(_) => None,
             SystemEvent::FeedItemReceived(_) => None,
+            SystemEvent::ConfigChanged(_) => None,
         }
     }
 }
@@ -289,4 +295,50 @@ pub struct FeedItemReceivedEvent {
     pub item: FeedItem,
     /// When the item was received
     pub received_at: DateTime<Utc>,
+}
+
+/// Queue position update event for a tracked order
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueueUpdateEvent {
+    /// Order ID being tracked
+    pub order_id: String,
+    /// Token ID for the order
+    pub token_id: TokenId,
+    /// Market ID for the order
+    pub market_id: MarketId,
+    /// Updated queue position information
+    pub position: QueuePosition,
+    /// When this update was calculated
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Type of configuration that changed
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConfigType {
+    /// Main application config (config/default.toml)
+    Main,
+    /// Strategy config (config/strategies/*.toml)
+    Strategy(String),
+}
+
+/// Config file changed event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigChangedEvent {
+    /// Path to the changed config file
+    pub path: std::path::PathBuf,
+    /// Type of config that changed
+    pub config_type: ConfigType,
+    /// When the change was detected
+    pub timestamp: DateTime<Utc>,
+}
+
+impl ConfigChangedEvent {
+    /// Create a new config changed event
+    pub fn new(path: std::path::PathBuf, config_type: ConfigType) -> Self {
+        Self {
+            path,
+            config_type,
+            timestamp: Utc::now(),
+        }
+    }
 }

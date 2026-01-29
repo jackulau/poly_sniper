@@ -1,0 +1,11 @@
+id: openrouter-client
+status: complete
+branch: polysniper/openrouter-client
+worktree_path: /Users/jacklau/Polysniper/.claude-workspace/worktrees/openrouter-client/worktree
+assigned_to: null
+started_at: 2026-01-29T02:03:19Z
+completed_at: 2026-01-29T02:03:19Z
+dependencies_met: true
+conflicts: []
+commit_sha: c20dc7567922a6b9efc8b22a43a82e5cf45527c5
+tests_passing: true

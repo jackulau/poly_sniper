@@ -1,0 +1,11 @@
+id: volatility-sizing
+status: complete
+branch: polysniper/volatility-sizing
+worktree_path: worktree
+assigned_to: claude
+started_at: 2026-01-29T08:15:31Z
+completed_at: 2026-01-29T08:15:31Z
+dependencies_met: true
+conflicts: []
+commit_sha: 9cb16271b13e282e832f7f89987f347568b9c106
+tests_passing: true
