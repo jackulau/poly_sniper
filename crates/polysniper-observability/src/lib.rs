@@ -1,12 +1,19 @@
 //! Polysniper Observability
 //!
-//! Logging, metrics, and alerting.
+//! Logging, metrics, alerting, and health checks.
 
 pub mod alerting;
+pub mod health;
 pub mod logging;
 pub mod metrics;
 
-pub use alerting::{AlertChannel, AlertManager, AlertingConfig, SlackConfig, TelegramConfig};
+pub use alerting::{
+    AlertChannel, AlertManager, AlertingConfig, SlackConfig, TelegramConfig,
+};
+pub use health::{
+    create_router as create_health_router, start_health_server, HealthConfig, HealthServer,
+    HealthState, HealthStatus,
+};
 pub use logging::{init_default_logging, init_logging, LogFormat};
 pub use metrics::{
     gather_metrics,

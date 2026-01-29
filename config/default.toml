@@ -1,5 +1,12 @@
 # Polysniper Configuration
 
+# Health check HTTP server
+[health]
+# Whether the health server is enabled
+enabled = true
+# Address and port to bind to
+bind_address = "127.0.0.1:8080"
+
 [endpoints]
 clob_rest = "https://clob.polymarket.com"
 clob_ws = "wss://ws-subscriptions-clob.polymarket.com/ws/"

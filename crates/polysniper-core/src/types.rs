@@ -404,6 +404,22 @@ impl Default for MetricsConfig {
     }
 }
 
+/// Health check server configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HealthConfig {
+    pub enabled: bool,
+    pub bind_address: String,
+}
+
+impl Default for HealthConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            bind_address: "127.0.0.1:8080".to_string(),
+        }
+    }
+}
+
 /// Slack alerting configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SlackAlertConfig {
@@ -564,7 +580,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub alerting: AlertingConfig,
     #[serde(default)]
-    pub gas: crate::gas::GasConfig,
+    pub health: HealthConfig,
 }
 
 impl Default for AppConfig {
@@ -577,7 +593,7 @@ impl Default for AppConfig {
             persistence: PersistenceConfig::default(),
             metrics: MetricsConfig::default(),
             alerting: AlertingConfig::default(),
-            gas: crate::gas::GasConfig::default(),
+            health: HealthConfig::default(),
         }
     }
 }
