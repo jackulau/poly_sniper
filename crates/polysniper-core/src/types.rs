@@ -58,18 +58,13 @@ impl fmt::Display for Outcome {
 }
 
 /// Priority level for trade signals
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
 pub enum Priority {
     Low = 0,
+    #[default]
     Normal = 1,
     High = 2,
     Critical = 3,
-}
-
-impl Default for Priority {
-    fn default() -> Self {
-        Priority::Normal
-    }
 }
 
 /// Market metadata from Gamma API
@@ -501,11 +496,15 @@ impl Default for OrderManagementConfig {
 }
 
 /// Main application configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
+    #[serde(default)]
     pub endpoints: EndpointConfig,
+    #[serde(default)]
     pub auth: AuthConfig,
+    #[serde(default)]
     pub risk: RiskConfig,
+    #[serde(default)]
     pub execution: ExecutionConfig,
     #[serde(default)]
     pub persistence: PersistenceConfig,
@@ -517,20 +516,4 @@ pub struct AppConfig {
     pub fill_management: FillManagementConfig,
     #[serde(default)]
     pub order_management: OrderManagementConfig,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            endpoints: EndpointConfig::default(),
-            auth: AuthConfig::default(),
-            risk: RiskConfig::default(),
-            execution: ExecutionConfig::default(),
-            persistence: PersistenceConfig::default(),
-            metrics: MetricsConfig::default(),
-            alerting: AlertingConfig::default(),
-            fill_management: FillManagementConfig::default(),
-            order_management: OrderManagementConfig::default(),
-        }
-    }
 }

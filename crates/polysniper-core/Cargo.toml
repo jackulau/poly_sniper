@@ -12,3 +12,7 @@ rust_decimal.workspace = true
 thiserror.workspace = true
 chrono.workspace = true
 tracing.workspace = true
+notify = { version = "6.1", default-features = false, features = ["macos_kqueue"] }
+
+[dev-dependencies]
+tempfile = "3.18"
