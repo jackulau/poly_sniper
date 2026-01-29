@@ -378,6 +378,35 @@ impl Default for TelegramAlertConfig {
     }
 }
 
+/// Discord webhook configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordConfig {
+    pub enabled: bool,
+    /// Webhook URL (recommended to use DISCORD_WEBHOOK_URL env var instead)
+    pub webhook_url: Option<String>,
+    pub notify_on_trade: bool,
+    pub notify_on_error: bool,
+    pub notify_on_risk_events: bool,
+    pub notify_on_connection_status: bool,
+    pub dry_run: bool,
+    pub rate_limit_per_minute: u32,
+}
+
+impl Default for DiscordConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            webhook_url: None,
+            notify_on_trade: true,
+            notify_on_error: true,
+            notify_on_risk_events: true,
+            notify_on_connection_status: false,
+            dry_run: false,
+            rate_limit_per_minute: 30,
+        }
+    }
+}
+
 /// Alerting configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlertingConfig {
@@ -417,4 +446,6 @@ pub struct AppConfig {
     pub metrics: MetricsConfig,
     #[serde(default)]
     pub alerting: AlertingConfig,
+    #[serde(default)]
+    pub discord: DiscordConfig,
 }

@@ -4,8 +4,8 @@
 
 use anyhow::{Context, Result};
 use polysniper_core::{
-    AppConfig, EventBus, OrderExecutor, RiskDecision, RiskValidator, StateManager, StateProvider,
-    Strategy, SystemEvent, TradeSignal,
+    AppConfig, DiscordConfig, EventBus, OrderExecutor, RiskDecision, RiskValidator, StateManager,
+    StateProvider, Strategy, SystemEvent, TradeSignal,
 };
 use polysniper_data::{BroadcastEventBus, GammaClient, MarketCache, WsManager};
 use polysniper_execution::{OrderBuilder, OrderSubmitter};
@@ -153,14 +153,47 @@ impl App {
         let config_path = std::env::var("POLYSNIPER_CONFIG")
             .unwrap_or_else(|_| DEFAULT_CONFIG_PATH.to_string());
 
-        if std::path::Path::new(&config_path).exists() {
+        let mut config = if std::path::Path::new(&config_path).exists() {
             let content = std::fs::read_to_string(&config_path)
                 .with_context(|| format!("Failed to read config file: {}", config_path))?;
             toml::from_str(&content)
-                .with_context(|| format!("Failed to parse config file: {}", config_path))
+                .with_context(|| format!("Failed to parse config file: {}", config_path))?
         } else {
             info!("Config file not found, using defaults");
-            Ok(AppConfig::default())
+            AppConfig::default()
+        };
+
+        // Apply Discord webhook URL from environment variable (security best practice)
+        if let Ok(webhook_url) = std::env::var("DISCORD_WEBHOOK_URL") {
+            if !webhook_url.is_empty() {
+                config.discord.webhook_url = Some(webhook_url);
+            }
+        }
+
+        // Validate Discord configuration
+        Self::validate_discord_config(&config.discord);
+
+        Ok(config)
+    }
+
+    /// Validate Discord configuration and log warnings
+    fn validate_discord_config(config: &DiscordConfig) {
+        if config.enabled {
+            match &config.webhook_url {
+                Some(url) if url.is_empty() => {
+                    warn!("Discord is enabled but webhook_url is empty. Set DISCORD_WEBHOOK_URL environment variable.");
+                }
+                Some(url) if !url.starts_with("https://discord.com/api/webhooks/") => {
+                    warn!(
+                        "Discord webhook URL does not match expected format (https://discord.com/api/webhooks/...). URL: {}",
+                        url
+                    );
+                }
+                None => {
+                    warn!("Discord is enabled but no webhook_url provided. Set DISCORD_WEBHOOK_URL environment variable.");
+                }
+                _ => {}
+            }
         }
     }
 
