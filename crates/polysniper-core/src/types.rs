@@ -285,12 +285,38 @@ impl Default for RiskConfig {
     }
 }
 
+/// Adaptive order sizing configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdaptiveSizingConfig {
+    /// Whether adaptive sizing is enabled
+    pub enabled: bool,
+    /// Maximum acceptable price impact in basis points
+    pub max_market_impact_bps: Decimal,
+    /// Minimum ratio of order size to available depth (0.0 to 1.0)
+    pub min_liquidity_ratio: Decimal,
+    /// Factor to reduce size when book is thin (0.0 to 1.0)
+    pub size_reduction_factor: Decimal,
+}
+
+impl Default for AdaptiveSizingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_market_impact_bps: Decimal::new(50, 0),    // 50 bps
+            min_liquidity_ratio: Decimal::new(1, 1),       // 0.1 (10%)
+            size_reduction_factor: Decimal::new(8, 1),     // 0.8 (reduce by 20%)
+        }
+    }
+}
+
 /// Execution configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionConfig {
     pub dry_run: bool,
     pub max_retries: u32,
     pub retry_delay_ms: u64,
+    #[serde(default)]
+    pub adaptive_sizing: AdaptiveSizingConfig,
 }
 
 impl Default for ExecutionConfig {
@@ -299,6 +325,7 @@ impl Default for ExecutionConfig {
             dry_run: true,
             max_retries: 3,
             retry_delay_ms: 100,
+            adaptive_sizing: AdaptiveSizingConfig::default(),
         }
     }
 }
