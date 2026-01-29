@@ -8,6 +8,7 @@ members = [
     "crates/polysniper-risk",
     "crates/polysniper-observability",
     "crates/polysniper-persistence",
+    "crates/polysniper-tui",
 ]
 
 [workspace.package]
@@ -77,6 +78,10 @@ ureq = { version = "2.9", features = ["json"] }
 # UUID generation
 uuid = { version = "1.8", features = ["v4"] }
 
+# TUI
+ratatui = "0.28"
+crossterm = "0.28"
+
 [package]
 name = "polysniper"
 version.workspace = true
@@ -90,6 +95,8 @@ polysniper-execution = { path = "crates/polysniper-execution" }
 polysniper-risk = { path = "crates/polysniper-risk" }
 polysniper-observability = { path = "crates/polysniper-observability" }
 polysniper-persistence = { path = "crates/polysniper-persistence" }
+polysniper-tui = { path = "crates/polysniper-tui" }
+clap = { version = "4.5", features = ["derive"] }
 
 tokio.workspace = true
 tracing.workspace = true
@@ -101,3 +108,5 @@ config.workspace = true
 chrono.workspace = true
 rust_decimal.workspace = true
 uuid.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true

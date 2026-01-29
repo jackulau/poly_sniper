@@ -1,0 +1,33 @@
+[package]
+name = "polysniper-tui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Terminal UI for Polysniper orderbook visualization"
+
+[dependencies]
+polysniper-core = { path = "../polysniper-core" }
+polysniper-data = { path = "../polysniper-data" }
+
+# TUI
+ratatui.workspace = true
+crossterm.workspace = true
+
+# Async
+tokio.workspace = true
+futures.workspace = true
+
+# Data types
+rust_decimal.workspace = true
+chrono.workspace = true
+
+# Serialization
+serde.workspace = true
+
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Logging
+tracing.workspace = true
