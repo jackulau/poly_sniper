@@ -2,6 +2,7 @@ use crate::types::{Market, MarketId, Orderbook, Position, TokenId, TradeSignal};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// System-wide event types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,6 +33,9 @@ pub enum SystemEvent {
 
     /// Heartbeat for health checks
     Heartbeat(HeartbeatEvent),
+
+    /// Feed item received from Twitter, RSS, etc.
+    FeedItemReceived(FeedItemReceivedEvent),
 }
 
 impl SystemEvent {
@@ -47,6 +51,7 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(_) => "trade_executed",
             SystemEvent::ConnectionStatus(_) => "connection_status",
             SystemEvent::Heartbeat(_) => "heartbeat",
+            SystemEvent::FeedItemReceived(_) => "feed_item_received",
         }
     }
 
@@ -62,6 +67,7 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(e) => e.timestamp,
             SystemEvent::ConnectionStatus(e) => e.timestamp,
             SystemEvent::Heartbeat(e) => e.timestamp,
+            SystemEvent::FeedItemReceived(e) => e.received_at,
         }
     }
 
@@ -77,6 +83,7 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(e) => Some(&e.market_id),
             SystemEvent::ConnectionStatus(_) => None,
             SystemEvent::Heartbeat(_) => None,
+            SystemEvent::FeedItemReceived(_) => None,
         }
     }
 }
@@ -218,4 +225,62 @@ pub enum ConnectionState {
 pub struct HeartbeatEvent {
     pub source: String,
     pub timestamp: DateTime<Utc>,
+}
+
+/// Source of a feed item
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum FeedItemSource {
+    Twitter {
+        account: Option<String>,
+        query: Option<String>,
+    },
+    Rss {
+        feed_url: String,
+        feed_title: Option<String>,
+    },
+}
+
+impl FeedItemSource {
+    pub fn source_name(&self) -> &'static str {
+        match self {
+            FeedItemSource::Twitter { .. } => "twitter",
+            FeedItemSource::Rss { .. } => "rss",
+        }
+    }
+}
+
+/// A feed item from any source (Twitter, RSS, etc.)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeedItem {
+    /// Unique identifier for this item (from source)
+    pub id: String,
+    /// Source of this feed item
+    pub source: FeedItemSource,
+    /// Main content/text of the item
+    pub content: String,
+    /// Title (for RSS items)
+    pub title: Option<String>,
+    /// Author/username
+    pub author: Option<String>,
+    /// URL to the original content
+    pub url: Option<String>,
+    /// When the content was published
+    pub published_at: DateTime<Utc>,
+    /// When we received this item
+    pub received_at: DateTime<Utc>,
+    /// Content hash for deduplication
+    pub content_hash: String,
+    /// Additional metadata
+    pub metadata: HashMap<String, serde_json::Value>,
+    /// Matched keywords that triggered this item
+    pub matched_keywords: Vec<String>,
+}
+
+/// Feed item received event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeedItemReceivedEvent {
+    /// The feed item that was received
+    pub item: FeedItem,
+    /// When the item was received
+    pub received_at: DateTime<Utc>,
 }
