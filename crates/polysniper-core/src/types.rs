@@ -1,3 +1,4 @@
+use crate::resolution::ResolutionConfig;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -620,5 +621,20 @@ pub struct AppConfig {
     #[serde(default)]
     pub alerting: AlertingConfig,
     #[serde(default)]
-    pub webhook: WebhookConfig,
+    pub resolution: ResolutionConfig,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            endpoints: EndpointConfig::default(),
+            auth: AuthConfig::default(),
+            risk: RiskConfig::default(),
+            execution: ExecutionConfig::default(),
+            persistence: PersistenceConfig::default(),
+            metrics: MetricsConfig::default(),
+            alerting: AlertingConfig::default(),
+            resolution: ResolutionConfig::default(),
+        }
+    }
 }

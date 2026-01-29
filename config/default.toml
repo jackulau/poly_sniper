@@ -114,13 +114,16 @@ bot_token = ""
 chat_id = ""
 parse_mode = "HTML"
 
-# ML Webhook Server Configuration
-[webhook]
-# Whether the webhook server is enabled
-enabled = false
-# Host to bind the server to
-host = "127.0.0.1"
-# Port to listen on
-port = 8080
-# Optional API key for authentication (checked via X-API-Key header)
-# api_key = "your-secret-key"
+# Resolution Tracking - Monitor market resolution events
+[resolution]
+# Whether resolution tracking is enabled
+enabled = true
+# Poll interval for checking market status in seconds
+poll_interval_secs = 30
+# Threshold for "approaching" status in seconds (24 hours)
+approaching_threshold_secs = 86400
+# Threshold for "imminent" status in seconds (1 hour)
+imminent_threshold_secs = 3600
+# Warning thresholds to emit events at (in seconds before resolution)
+# Emits warnings at 24h, 1h, and 15m before resolution
+warning_thresholds_secs = [86400, 3600, 900]
