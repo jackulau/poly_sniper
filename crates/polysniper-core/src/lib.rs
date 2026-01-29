@@ -5,7 +5,7 @@
 pub mod config_watcher;
 pub mod error;
 pub mod events;
-pub mod resolution;
+pub mod sentiment;
 pub mod traits;
 pub mod types;
 
@@ -13,6 +13,6 @@ pub mod types;
 pub use config_watcher::*;
 pub use error::*;
 pub use events::*;
-pub use resolution::*;
+pub use sentiment::*;
 pub use traits::*;
 pub use types::*;

@@ -1,0 +1,107 @@
+# Sentiment Strategy Configuration
+#
+# This strategy analyzes external signals (Twitter, RSS feeds, webhooks) for sentiment
+# and generates trading signals based on positive/negative sentiment toward specific markets.
+
+[strategy]
+enabled = false
+
+# Minimum sentiment score threshold (0.0 to 1.0)
+# Only signals with absolute sentiment >= this value will trigger trades
+min_sentiment_threshold = "0.3"
+
+# Minimum confidence threshold (0.0 to 1.0)
+# Only signals with confidence >= this value will trigger trades
+min_confidence_threshold = "0.5"
+
+# Cooldown between signals for the same market (seconds)
+# Prevents rapid-fire trading on the same market
+signal_cooldown_secs = 300
+
+# Default order size in USD for sentiment-triggered trades
+default_order_size_usd = "50"
+
+# Maximum entry price for buying (0.0 to 1.0)
+# Prevents buying when price is already too high
+max_entry_price = "0.85"
+
+# Aggregation window in seconds
+# Signals within this window are combined before generating a trade
+aggregation_window_secs = 60
+
+# Priority for generated signals: Low, Normal, High, Critical
+signal_priority = "High"
+
+# Positive keywords with weights (higher weight = stronger positive signal)
+# Weight range: 0.0 to 1.0
+[strategy.positive_keywords]
+bullish = "1.0"
+positive = "0.8"
+surge = "0.9"
+rally = "0.9"
+win = "0.7"
+winning = "0.7"
+confirmed = "0.8"
+approved = "0.8"
+success = "0.8"
+victory = "0.9"
+leads = "0.6"
+leading = "0.6"
+ahead = "0.6"
+rising = "0.7"
+soaring = "0.8"
+
+# Negative keywords with weights (higher weight = stronger negative signal)
+# Weight range: 0.0 to 1.0
+[strategy.negative_keywords]
+bearish = "1.0"
+negative = "0.8"
+crash = "0.9"
+dump = "0.9"
+lose = "0.7"
+losing = "0.7"
+rejected = "0.8"
+denied = "0.8"
+failed = "0.8"
+defeat = "0.9"
+trails = "0.6"
+trailing = "0.6"
+behind = "0.6"
+falling = "0.7"
+plunging = "0.8"
+
+# Source weights for aggregation
+# Higher weight = more influence on aggregated sentiment
+# Default: Twitter 1.2x, News 1.0x, Reddit 0.8x
+[strategy.source_weights]
+twitter = "1.2"
+news = "1.0"
+reddit = "0.8"
+
+# Market keyword mappings
+# Maps keywords found in content to market identifiers for searching
+# Each keyword can map to multiple market search terms
+#
+# Example:
+# [strategy.market_keywords]
+# trump = ["Trump", "president", "election"]
+# bitcoin = ["Bitcoin", "BTC", "crypto"]
+
+[strategy.market_keywords]
+# Add your market keyword mappings here
+
+# Market mappings - map keywords to specific markets
+# Use this for known markets you want to trade based on sentiment
+#
+# Example:
+# [strategy.market_mappings.trump]
+# market_id = "0x..."
+# yes_token_id = "0x..."
+# no_token_id = "0x..."
+# order_size_usd = "100"  # Optional: override default order size
+# max_entry_price = "0.90"  # Optional: override default max price
+
+# [strategy.market_mappings.trump]
+# market_id = "your-trump-market-condition-id"
+# yes_token_id = "your-trump-yes-token-id"
+# no_token_id = "your-trump-no-token-id"
