@@ -5,8 +5,8 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use polysniper_core::{
-    ExternalSignalEvent, MarketId, MlConfig, OrderType, Outcome, Priority, Side, SignalSource,
-    StateProvider, Strategy, StrategyError, SystemEvent, TradeSignal,
+    ExternalSignalEvent, MarketId, OrderType, Outcome, Priority, Side, SignalSource, StateProvider,
+    Strategy, StrategyError, SystemEvent, TradeSignal,
 };
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;

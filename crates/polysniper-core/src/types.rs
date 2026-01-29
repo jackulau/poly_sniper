@@ -560,8 +560,7 @@ impl Default for WebhookConfig {
 }
 
 /// Main application configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default)]
     pub endpoints: EndpointConfig,
@@ -579,19 +578,4 @@ pub struct AppConfig {
     pub alerting: AlertingConfig,
     #[serde(default)]
     pub webhook: WebhookConfig,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            endpoints: EndpointConfig::default(),
-            auth: AuthConfig::default(),
-            risk: RiskConfig::default(),
-            execution: ExecutionConfig::default(),
-            persistence: PersistenceConfig::default(),
-            metrics: MetricsConfig::default(),
-            alerting: AlertingConfig::default(),
-            webhook: WebhookConfig::default(),
-        }
-    }
 }
