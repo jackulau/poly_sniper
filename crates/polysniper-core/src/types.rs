@@ -536,7 +536,8 @@ impl Default for AlertingConfig {
 }
 
 /// Main application configuration
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct AppConfig {
     #[serde(default)]
     pub endpoints: EndpointConfig,
@@ -552,6 +553,4 @@ pub struct AppConfig {
     pub metrics: MetricsConfig,
     #[serde(default)]
     pub alerting: AlertingConfig,
-    #[serde(default)]
-    pub health: HealthConfig,
 }

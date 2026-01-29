@@ -6,7 +6,67 @@ enabled = false
 # Default order size in USD
 default_order_size_usd = "100"
 
-# Signal rules define how to react to external signals
+# =============================================================================
+# ML Signal Processing Configuration
+# =============================================================================
+[strategy.ml_config]
+# Enable ML signal processing
+enabled = true
+
+# Global minimum confidence threshold (0.0 to 1.0)
+# Signals below this confidence will be rejected
+min_confidence = "0.50"
+
+# Maximum confidence cap (for risk management)
+max_confidence = "1.0"
+
+# Confidence multiplier for size calculation
+# Size = base_size * (confidence * confidence_multiplier)
+confidence_multiplier = "1.0"
+
+# Minimum size multiplier (prevents tiny orders)
+# Even low confidence signals will use at least this fraction of base size
+min_size_multiplier = "0.25"
+
+# Maximum size multiplier (caps large orders)
+# Even high confidence signals won't exceed this fraction of base size
+max_size_multiplier = "1.50"
+
+# Default cooldown between signals from same model (seconds)
+# Prevents rapid-fire signals from a single model
+default_cooldown_secs = 60
+
+# Pattern to identify ML webhook signals (matched against endpoint)
+ml_source_pattern = "ml-webhook"
+
+# =============================================================================
+# Per-Model Configuration (optional)
+# Override global settings for specific models
+# =============================================================================
+
+# Example: High-confidence model with lower threshold
+# [strategy.ml_config.model_configs.my-bert-model]
+# name = "BERT Sentiment Model"
+# enabled = true
+# min_confidence = "0.40"
+# confidence_multiplier = "1.2"
+# cooldown_secs = 30
+# max_signals_per_day = 50
+# weight = "1.0"
+
+# Example: Experimental model with higher threshold
+# [strategy.ml_config.model_configs.experimental-v2]
+# name = "Experimental Model v2"
+# enabled = true
+# min_confidence = "0.70"
+# confidence_multiplier = "0.8"
+# cooldown_secs = 120
+# max_signals_per_day = 20
+# weight = "0.5"
+
+# =============================================================================
+# Signal Rules (for non-ML signals)
+# =============================================================================
 # Each rule specifies keywords to match and the action to take
 
 # Example rule (uncomment and modify as needed):
@@ -24,7 +84,11 @@ default_order_size_usd = "100"
 # [strategy.rules]
 # priority = "High"
 
-# Market mappings (optional) - map keywords to known market IDs
+# =============================================================================
+# Market Mappings (optional)
+# Map keywords to known market IDs for faster lookup
+# =============================================================================
+
 # [strategy.market_mappings.trump_arrest]
 # market_id = "0x..."
 # yes_token_id = "0x..."
