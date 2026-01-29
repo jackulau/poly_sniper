@@ -258,6 +258,43 @@ impl Default for AuthConfig {
     }
 }
 
+/// Correlation tracking configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrelationConfig {
+    /// Whether correlation-aware limits are enabled
+    pub enabled: bool,
+    /// Minimum correlation threshold to group markets (e.g., 0.7)
+    pub correlation_threshold: Decimal,
+    /// Time window in seconds for correlation calculation
+    pub window_secs: u64,
+    /// Maximum total exposure across correlated markets in USD
+    pub max_correlated_exposure_usd: Decimal,
+    /// Manual correlation groups (market slugs)
+    #[serde(default)]
+    pub groups: Vec<CorrelationGroupConfig>,
+}
+
+impl Default for CorrelationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            correlation_threshold: Decimal::new(7, 1), // 0.7
+            window_secs: 3600,                         // 1 hour
+            max_correlated_exposure_usd: Decimal::new(3000, 0),
+            groups: Vec::new(),
+        }
+    }
+}
+
+/// Manual correlation group configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrelationGroupConfig {
+    /// Group name/identifier
+    pub name: String,
+    /// Market IDs or slug patterns in this group
+    pub markets: Vec<String>,
+}
+
 /// Risk configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskConfig {
@@ -266,6 +303,9 @@ pub struct RiskConfig {
     pub daily_loss_limit_usd: Decimal,
     pub circuit_breaker_loss_usd: Decimal,
     pub max_orders_per_minute: u32,
+    /// Correlation-aware position limit configuration
+    #[serde(default)]
+    pub correlation: CorrelationConfig,
 }
 
 impl Default for RiskConfig {
@@ -276,6 +316,7 @@ impl Default for RiskConfig {
             daily_loss_limit_usd: Decimal::new(500, 0),
             circuit_breaker_loss_usd: Decimal::new(300, 0),
             max_orders_per_minute: 60,
+            correlation: CorrelationConfig::default(),
         }
     }
 }
