@@ -1,0 +1,47 @@
+# Liquidity Provision Strategy Configuration
+#
+# This strategy places orders on both sides of the orderbook to earn
+# the bid-ask spread while managing inventory risk.
+
+[strategy]
+enabled = false
+
+# Base spread to quote around mid price (0.02 = 2%)
+# This is the minimum profit margin per round-trip trade
+base_spread_pct = "0.02"
+
+# Order size in USD for each side of the quote
+order_size_usd = "50"
+
+# Maximum inventory per market in USD
+# When position reaches this limit, strategy stops adding to that side
+max_position_usd = "500"
+
+# Maximum total inventory across all markets
+max_total_position_usd = "5000"
+
+# Inventory skew factor (0.0 - 1.0)
+# Higher values = more aggressive price adjustment based on inventory
+# When long, prices are lowered to encourage sells
+# When short, prices are raised to encourage buys
+inventory_skew_factor = "0.5"
+
+# How often to refresh quotes (seconds)
+# More frequent = tighter quotes but more order churn
+refresh_interval_secs = 30
+
+# Minimum market liquidity to provide quotes (USD)
+# Avoids illiquid markets where spreads may be too wide
+min_liquidity_usd = "1000"
+
+# Specific markets to provide liquidity for
+# Empty list = all markets
+markets = []
+
+# Cancel the opposite side order when one side fills
+# Helps manage inventory risk but increases order activity
+cancel_on_fill = true
+
+# Price change threshold to trigger quote refresh (percentage)
+# Quotes are refreshed when mid price moves by this amount
+price_change_threshold_pct = "1.0"
