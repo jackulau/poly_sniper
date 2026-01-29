@@ -153,13 +153,12 @@ impl NewMarketStrategy {
         }
 
         // Check categories/tags
-        if !categories.is_empty() {
-            let has_category = categories.iter().any(|cat| {
-                market
-                    .tags
-                    .iter()
-                    .any(|tag| tag.eq_ignore_ascii_case(cat))
-            });
+        if !self.config.categories.is_empty() {
+            let has_category = self
+                .config
+                .categories
+                .iter()
+                .any(|cat| market.tags.iter().any(|tag| tag.eq_ignore_ascii_case(cat)));
 
             if !has_category {
                 return false;
@@ -324,8 +323,8 @@ impl Strategy for NewMarketStrategy {
             side: default_side,
             price: Some(entry_price),
             size,
-            size_usd: order_size_usd,
-            order_type: OrderType::Fok, // Use FOK for speed
+            size_usd: self.config.order_size_usd,
+            order_type: OrderType::Fok,   // Use FOK for speed
             priority: Priority::Critical, // Critical priority for new markets
             timestamp: Utc::now(),
             reason: format!("New market detected: {}", market.question),

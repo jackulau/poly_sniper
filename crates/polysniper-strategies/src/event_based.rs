@@ -315,20 +315,19 @@ impl Strategy for EventBasedStrategy {
         );
 
         // Resolve market
-        let (market_id, yes_token_id, no_token_id) =
-            match self
-                .resolve_market(&rule.action, external_signal, state, &market_mappings)
-                .await
-            {
-                Some(m) => m,
-                None => {
-                    warn!(
-                        rule_name = %rule.name,
-                        "Could not resolve market for signal"
-                    );
-                    return Ok(signals);
-                }
-            };
+        let (market_id, yes_token_id, no_token_id) = match self
+            .resolve_market(&rule.action, external_signal, state)
+            .await
+        {
+            Some(m) => m,
+            None => {
+                warn!(
+                    rule_name = %rule.name,
+                    "Could not resolve market for signal"
+                );
+                return Ok(signals);
+            }
+        };
 
         let token_id = match rule.action.outcome {
             Outcome::Yes => yes_token_id,
