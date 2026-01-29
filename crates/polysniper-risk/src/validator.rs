@@ -66,6 +66,11 @@ impl RiskManager {
         orders.iter().filter(|o| o.timestamp >= cutoff).count() as u32
     }
 
+    /// Get the current halt reason, if halted
+    pub async fn get_halt_reason(&self) -> Option<String> {
+        self.halt_reason.read().await.clone()
+    }
+
     /// Check rate limit
     async fn check_rate_limit(&self) -> Result<(), RiskError> {
         let current_rate = self.orders_per_minute().await;

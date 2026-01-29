@@ -13,3 +13,10 @@ rust_decimal.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 chrono.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }

@@ -405,6 +405,33 @@ impl Default for AlertingConfig {
     }
 }
 
+/// Control server configuration for emergency kill switch
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ControlConfig {
+    /// Whether the control server is enabled
+    pub enabled: bool,
+    /// Port for the HTTP control server
+    pub port: u16,
+    /// Host address to bind to
+    pub host: String,
+    /// Optional bearer token for authentication
+    pub auth_token: Option<String>,
+    /// Enable Unix signal handlers (SIGUSR1/SIGUSR2)
+    pub signal_handlers: bool,
+}
+
+impl Default for ControlConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            port: 9876,
+            host: "127.0.0.1".to_string(),
+            auth_token: None,
+            signal_handlers: true,
+        }
+    }
+}
+
 /// Main application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -418,6 +445,8 @@ pub struct AppConfig {
     pub metrics: MetricsConfig,
     #[serde(default)]
     pub alerting: AlertingConfig,
+    #[serde(default)]
+    pub control: ControlConfig,
 }
 
 impl Default for AppConfig {
@@ -430,6 +459,7 @@ impl Default for AppConfig {
             persistence: PersistenceConfig::default(),
             metrics: MetricsConfig::default(),
             alerting: AlertingConfig::default(),
+            control: ControlConfig::default(),
         }
     }
 }
