@@ -350,6 +350,7 @@ mod tests {
             cache_ttl_secs: 10,
             history_duration_secs: 3600,
             thresholds: polysniper_core::GasThresholds::default(),
+            optimization: polysniper_core::GasOptimizationConfig::default(),
         }
     }
 
