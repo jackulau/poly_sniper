@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+polysniper-core = { path = "../polysniper-core" }
+
 # Async runtime
 tokio.workspace = true
 async-trait.workspace = true
@@ -15,6 +17,12 @@ reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+# Date/time
+chrono.workspace = true
+
+# Decimal types
+rust_decimal.workspace = true
+
 # Error handling
 thiserror.workspace = true
 
@@ -22,4 +30,5 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["test-util", "macros"] }
+tokio = { workspace = true, features = ["test-util", "macros", "rt"] }
+rust_decimal_macros.workspace = true

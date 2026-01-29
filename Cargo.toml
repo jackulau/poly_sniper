@@ -9,6 +9,7 @@ members = [
     "crates/polysniper-risk",
     "crates/polysniper-observability",
     "crates/polysniper-persistence",
+    "crates/polysniper-discord",
 ]
 
 [workspace.package]
