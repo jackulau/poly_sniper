@@ -22,6 +22,9 @@ pub struct GasConfig {
     pub history_duration_secs: u64,
     /// Gas condition thresholds in gwei
     pub thresholds: GasThresholds,
+    /// Gas optimization configuration
+    #[serde(default)]
+    pub optimization: GasOptimizationConfig,
 }
 
 impl Default for GasConfig {
@@ -34,6 +37,7 @@ impl Default for GasConfig {
             cache_ttl_secs: 10,
             history_duration_secs: 3600, // 1 hour
             thresholds: GasThresholds::default(),
+            optimization: GasOptimizationConfig::default(),
         }
     }
 }
@@ -319,6 +323,186 @@ impl Default for GasPriceHistory {
     }
 }
 
+// ============================================================================
+// Gas Optimization Configuration
+// ============================================================================
+
+/// Execution timing strategy for orders
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionStrategy {
+    /// Execute immediately regardless of gas price
+    Immediate,
+    /// Wait until gas price is below the threshold for the priority level
+    #[default]
+    WaitForLow,
+    /// Execute within a time window at the best observed gas price
+    TimeWindow,
+}
+
+impl std::fmt::Display for ExecutionStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExecutionStrategy::Immediate => write!(f, "Immediate"),
+            ExecutionStrategy::WaitForLow => write!(f, "WaitForLow"),
+            ExecutionStrategy::TimeWindow => write!(f, "TimeWindow"),
+        }
+    }
+}
+
+/// Priority-specific gas optimization settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriorityGasSettings {
+    /// Maximum gas price threshold in gwei to execute at this priority
+    pub max_gas_gwei: Decimal,
+    /// Maximum time to wait in queue before forced execution (seconds)
+    pub max_queue_time_secs: u64,
+    /// Default execution strategy for this priority
+    pub strategy: ExecutionStrategy,
+}
+
+impl PriorityGasSettings {
+    pub fn critical() -> Self {
+        Self {
+            max_gas_gwei: Decimal::new(1000, 0), // Execute at any gas up to 1000 gwei
+            max_queue_time_secs: 0,              // Never queue
+            strategy: ExecutionStrategy::Immediate,
+        }
+    }
+
+    pub fn high() -> Self {
+        Self {
+            max_gas_gwei: Decimal::new(200, 0), // Up to 200 gwei
+            max_queue_time_secs: 60,            // Wait up to 1 minute
+            strategy: ExecutionStrategy::TimeWindow,
+        }
+    }
+
+    pub fn normal() -> Self {
+        Self {
+            max_gas_gwei: Decimal::new(100, 0), // Up to 100 gwei
+            max_queue_time_secs: 300,           // Wait up to 5 minutes
+            strategy: ExecutionStrategy::WaitForLow,
+        }
+    }
+
+    pub fn low() -> Self {
+        Self {
+            max_gas_gwei: Decimal::new(50, 0), // Up to 50 gwei
+            max_queue_time_secs: 900,          // Wait up to 15 minutes
+            strategy: ExecutionStrategy::WaitForLow,
+        }
+    }
+}
+
+/// Gas optimization configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GasOptimizationConfig {
+    /// Whether gas optimization is enabled
+    pub enabled: bool,
+    /// Settings for CRITICAL priority orders
+    pub critical: PriorityGasSettings,
+    /// Settings for HIGH priority orders
+    pub high: PriorityGasSettings,
+    /// Settings for NORMAL priority orders
+    pub normal: PriorityGasSettings,
+    /// Settings for LOW priority orders
+    pub low: PriorityGasSettings,
+    /// Enable order batching for same token/market
+    pub batch_enabled: bool,
+    /// Minimum orders to batch before considering batch submission
+    pub batch_min_orders: usize,
+    /// Maximum time to wait for batch accumulation (seconds)
+    pub batch_max_wait_secs: u64,
+    /// Queue processing interval in milliseconds
+    pub queue_process_interval_ms: u64,
+}
+
+impl Default for GasOptimizationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            critical: PriorityGasSettings::critical(),
+            high: PriorityGasSettings::high(),
+            normal: PriorityGasSettings::normal(),
+            low: PriorityGasSettings::low(),
+            batch_enabled: true,
+            batch_min_orders: 2,
+            batch_max_wait_secs: 30,
+            queue_process_interval_ms: 1000,
+        }
+    }
+}
+
+impl GasOptimizationConfig {
+    /// Get priority settings for a given priority level
+    pub fn settings_for_priority(&self, priority: &crate::types::Priority) -> &PriorityGasSettings {
+        match priority {
+            crate::types::Priority::Critical => &self.critical,
+            crate::types::Priority::High => &self.high,
+            crate::types::Priority::Normal => &self.normal,
+            crate::types::Priority::Low => &self.low,
+        }
+    }
+}
+
+/// Metrics for gas optimization performance
+#[derive(Debug, Clone, Default)]
+pub struct GasOptimizationMetrics {
+    /// Total orders processed
+    pub orders_processed: u64,
+    /// Orders executed immediately
+    pub orders_immediate: u64,
+    /// Orders queued for later execution
+    pub orders_queued: u64,
+    /// Orders executed from queue
+    pub orders_from_queue: u64,
+    /// Orders force-executed due to timeout
+    pub orders_force_executed: u64,
+    /// Total gas saved (estimated) in gwei
+    pub estimated_gas_saved_gwei: Decimal,
+    /// Batched orders count
+    pub orders_batched: u64,
+    /// Average queue wait time in seconds
+    pub avg_queue_wait_secs: f64,
+}
+
+impl GasOptimizationMetrics {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn record_immediate(&mut self) {
+        self.orders_processed += 1;
+        self.orders_immediate += 1;
+    }
+
+    pub fn record_queued(&mut self) {
+        self.orders_queued += 1;
+    }
+
+    pub fn record_from_queue(&mut self, wait_secs: f64) {
+        self.orders_processed += 1;
+        self.orders_from_queue += 1;
+        // Update rolling average
+        let n = self.orders_from_queue as f64;
+        self.avg_queue_wait_secs = ((n - 1.0) * self.avg_queue_wait_secs + wait_secs) / n;
+    }
+
+    pub fn record_force_executed(&mut self) {
+        self.orders_processed += 1;
+        self.orders_force_executed += 1;
+    }
+
+    pub fn record_gas_saved(&mut self, saved_gwei: Decimal) {
+        self.estimated_gas_saved_gwei += saved_gwei;
+    }
+
+    pub fn record_batched(&mut self, count: u64) {
+        self.orders_batched += count;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -433,5 +617,56 @@ mod tests {
         let (min, max) = history.min_max_standard().unwrap();
         assert_eq!(min, dec!(25));
         assert_eq!(max, dec!(100));
+    }
+
+    #[test]
+    fn test_execution_strategy_default() {
+        assert_eq!(ExecutionStrategy::default(), ExecutionStrategy::WaitForLow);
+    }
+
+    #[test]
+    fn test_priority_gas_settings() {
+        let critical = PriorityGasSettings::critical();
+        assert_eq!(critical.max_queue_time_secs, 0);
+        assert_eq!(critical.strategy, ExecutionStrategy::Immediate);
+
+        let low = PriorityGasSettings::low();
+        assert_eq!(low.max_queue_time_secs, 900);
+        assert_eq!(low.strategy, ExecutionStrategy::WaitForLow);
+    }
+
+    #[test]
+    fn test_gas_optimization_config_default() {
+        let config = GasOptimizationConfig::default();
+        assert!(config.enabled);
+        assert!(config.batch_enabled);
+        assert_eq!(config.batch_min_orders, 2);
+    }
+
+    #[test]
+    fn test_gas_optimization_metrics() {
+        let mut metrics = GasOptimizationMetrics::new();
+
+        metrics.record_immediate();
+        assert_eq!(metrics.orders_processed, 1);
+        assert_eq!(metrics.orders_immediate, 1);
+
+        metrics.record_queued();
+        assert_eq!(metrics.orders_queued, 1);
+
+        metrics.record_from_queue(5.0);
+        assert_eq!(metrics.orders_processed, 2);
+        assert_eq!(metrics.orders_from_queue, 1);
+        assert_eq!(metrics.avg_queue_wait_secs, 5.0);
+
+        metrics.record_from_queue(10.0);
+        assert_eq!(metrics.orders_from_queue, 2);
+        assert_eq!(metrics.avg_queue_wait_secs, 7.5); // (5 + 10) / 2
+
+        metrics.record_gas_saved(dec!(100));
+        assert_eq!(metrics.estimated_gas_saved_gwei, dec!(100));
+
+        metrics.record_batched(3);
+        assert_eq!(metrics.orders_batched, 3);
     }
 }

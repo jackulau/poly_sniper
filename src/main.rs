@@ -8,8 +8,7 @@ use polysniper_core::{
     StateProvider, Strategy, SystemEvent, TradeSignal,
 };
 use polysniper_data::{BroadcastEventBus, GammaClient, MarketCache, WsManager};
-use polysniper_discord::DiscordNotifier;
-use polysniper_execution::{OrderBuilder, OrderSubmitter};
+use polysniper_execution::{GasOptimizer, GasTracker, OrderBuilder, OrderSubmitter};
 use polysniper_observability::{
     init_logging, record_event_processing, record_new_market, record_order, record_risk_rejection,
     record_signal, record_strategy_error, record_strategy_processing, start_metrics_server,
@@ -42,6 +41,7 @@ struct App {
     risk_manager: Arc<RiskManager>,
     order_builder: OrderBuilder,
     order_executor: Arc<dyn OrderExecutor>,
+    gas_optimizer: Option<Arc<GasOptimizer>>,
     gamma_client: Arc<GammaClient>,
     database: Option<Arc<Database>>,
     alert_manager: Option<Arc<AlertManager>>,
@@ -73,12 +73,23 @@ impl App {
             .map(|_| "0x0000000000000000000000000000000000000000".to_string()) // Placeholder
             .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string());
 
-        let order_executor: Arc<dyn OrderExecutor> = Arc::new(OrderSubmitter::new(
+        let base_executor: Arc<dyn OrderExecutor> = Arc::new(OrderSubmitter::new(
             config.endpoints.clob_rest.clone(),
             wallet_address,
             config.auth.signature_type,
             config.execution.clone(),
         ));
+
+        // Wrap with gas optimizer if enabled
+        let (order_executor, gas_optimizer): (Arc<dyn OrderExecutor>, Option<Arc<GasOptimizer>>) =
+            if config.gas.optimization.enabled {
+                let (optimizer, _handle) =
+                    GasOptimizer::new(base_executor, config.gas.optimization.clone());
+                let optimizer = Arc::new(optimizer);
+                (optimizer.clone(), Some(optimizer))
+            } else {
+                (base_executor, None)
+            };
 
         // Load strategies
         let strategies = Self::load_strategies()?;
@@ -131,6 +142,7 @@ impl App {
             risk_manager,
             order_builder,
             order_executor,
+            gas_optimizer,
             gamma_client,
             database,
             alert_manager,
@@ -388,12 +400,20 @@ impl App {
             }
         });
 
-        // Spawn Discord notifier task
-        let discord_handle = if let Some(ref notifier) = self.discord_notifier {
-            let notifier = notifier.clone();
-            let discord_event_rx = self.event_bus.subscribe();
+        // Spawn gas tracker if enabled
+        let gas_tracker_handle = if self.config.gas.enabled {
+            let gas_tracker = GasTracker::new(
+                self.config.gas.clone(),
+                self.event_bus.sender(),
+            );
+            info!(
+                poll_interval = %self.config.gas.poll_interval_secs,
+                "Starting gas tracker"
+            );
             Some(tokio::spawn(async move {
-                notifier.run(discord_event_rx).await;
+                if let Err(e) = gas_tracker.run().await {
+                    error!("Gas tracker error: {}", e);
+                }
             }))
         } else {
             None
@@ -407,7 +427,22 @@ impl App {
             self.config.execution.dry_run
         );
         info!("Loaded {} strategies", self.strategies.len());
-        info!("Monitoring {} markets", self.state.market_count().await);
+        info!(
+            "Monitoring {} markets",
+            self.state.market_count().await
+        );
+        if self.config.gas.enabled {
+            info!(
+                "Gas tracking enabled (poll: {}s)",
+                self.config.gas.poll_interval_secs
+            );
+        }
+        if self.config.gas.optimization.enabled {
+            info!(
+                "Gas optimization enabled (batch: {})",
+                self.config.gas.optimization.batch_enabled
+            );
+        }
 
         // Update initial market count metric
         update_markets_monitored(self.state.market_count().await as i64);
@@ -458,16 +493,13 @@ impl App {
         // Cleanup
         ws_handle.abort();
         gamma_handle.abort();
-        order_mgmt_handle.abort();
-
-        // Stop Discord notifier gracefully
-        if let Some(ref notifier) = self.discord_notifier {
-            info!("Stopping Discord notifier...");
-            notifier.stop();
+        if let Some(handle) = gas_tracker_handle {
+            handle.abort();
         }
-        if let Some(handle) = discord_handle {
-            // Give it a moment to flush pending messages
-            tokio::time::timeout(Duration::from_secs(5), handle).await.ok();
+
+        // Shutdown gas optimizer gracefully
+        if let Some(optimizer) = &self.gas_optimizer {
+            optimizer.shutdown().await;
         }
 
         // Close database connection
@@ -513,6 +545,13 @@ impl App {
                 self.state.update_market(e.market.clone()).await;
                 record_new_market();
                 update_markets_monitored(self.state.market_count().await as i64);
+            }
+            SystemEvent::GasPriceUpdate(e) => {
+                // Forward gas price updates to the optimizer
+                if let Some(optimizer) = &self.gas_optimizer {
+                    optimizer.update_gas_price(e.gas_price.clone()).await;
+                    optimizer.update_gas_condition(e.condition).await;
+                }
             }
             _ => {}
         }

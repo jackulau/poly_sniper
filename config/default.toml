@@ -152,3 +152,43 @@ low = 30
 normal = 100
 # Below this is considered High (above normal) - above this is Extreme
 high = 300
+
+# Gas Optimization - intelligent order timing based on gas prices
+[gas.optimization]
+# Whether gas optimization is enabled
+enabled = true
+# Enable order batching for same token/market
+batch_enabled = true
+# Minimum orders to batch before considering batch submission
+batch_min_orders = 2
+# Maximum time to wait for batch accumulation (seconds)
+batch_max_wait_secs = 30
+# Queue processing interval in milliseconds
+queue_process_interval_ms = 1000
+
+# CRITICAL priority: Execute immediately regardless of gas
+[gas.optimization.critical]
+# Maximum gas price in gwei (high limit for critical)
+max_gas_gwei = 1000
+# Maximum time to wait in queue (0 = never queue)
+max_queue_time_secs = 0
+# Execution strategy: immediate, wait_for_low, or time_window
+strategy = "immediate"
+
+# HIGH priority: Short delay acceptable, still time-sensitive
+[gas.optimization.high]
+max_gas_gwei = 200
+max_queue_time_secs = 60
+strategy = "time_window"
+
+# NORMAL priority: Standard orders, can wait for better gas
+[gas.optimization.normal]
+max_gas_gwei = 100
+max_queue_time_secs = 300
+strategy = "wait_for_low"
+
+# LOW priority: Non-urgent, maximize gas savings
+[gas.optimization.low]
+max_gas_gwei = 50
+max_queue_time_secs = 900
+strategy = "wait_for_low"
