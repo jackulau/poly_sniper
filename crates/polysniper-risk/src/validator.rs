@@ -10,7 +10,9 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
+
+use crate::volatility::VolatilityCalculator;
 
 /// Order tracking for rate limiting
 #[derive(Debug, Clone)]
@@ -27,16 +29,20 @@ pub struct RiskManager {
     halt_reason: Arc<RwLock<Option<String>>>,
     /// Recent orders for rate limiting
     recent_orders: Arc<RwLock<VecDeque<OrderRecord>>>,
+    /// Volatility calculator for position sizing
+    volatility_calculator: VolatilityCalculator,
 }
 
 impl RiskManager {
     /// Create a new risk manager
     pub fn new(config: RiskConfig) -> Self {
+        let volatility_calculator = VolatilityCalculator::new(config.volatility.clone());
         Self {
             config,
             halted: Arc::new(AtomicBool::new(false)),
             halt_reason: Arc::new(RwLock::new(None)),
             recent_orders: Arc::new(RwLock::new(VecDeque::new())),
+            volatility_calculator,
         }
     }
 
@@ -154,6 +160,60 @@ impl RiskManager {
             None
         }
     }
+
+    /// Calculate volatility-adjusted size based on market conditions
+    ///
+    /// Returns (adjusted_size, was_modified, reason) if volatility adjustment applies
+    async fn calculate_volatility_adjusted_size(
+        &self,
+        signal: &TradeSignal,
+        state: &dyn StateProvider,
+    ) -> Option<(Decimal, String)> {
+        if !self.volatility_calculator.is_enabled() {
+            return None;
+        }
+
+        // Get price history for the token
+        let price_history = state.get_price_history(&signal.token_id, 1000).await;
+
+        if price_history.is_empty() {
+            debug!(
+                token_id = %signal.token_id,
+                "No price history for volatility calculation, skipping adjustment"
+            );
+            return None;
+        }
+
+        let (adjusted_size, multiplier, volatility) = self
+            .volatility_calculator
+            .adjust_size(signal.size, &price_history);
+
+        // Only report modification if multiplier is not 1.0
+        if multiplier != Decimal::ONE {
+            let vol_str = volatility
+                .map(|v| format!("{:.2}%", v))
+                .unwrap_or_else(|| "unknown".to_string());
+
+            let reason = format!(
+                "Volatility-adjusted: size {} -> {} (multiplier: {:.2}, volatility: {})",
+                signal.size, adjusted_size, multiplier, vol_str
+            );
+
+            info!(
+                signal_id = %signal.id,
+                token_id = %signal.token_id,
+                original_size = %signal.size,
+                adjusted_size = %adjusted_size,
+                multiplier = %multiplier,
+                volatility = ?volatility,
+                "Applying volatility-based position sizing"
+            );
+
+            return Some((adjusted_size, reason));
+        }
+
+        None
+    }
 }
 
 #[async_trait]
@@ -183,7 +243,9 @@ impl RiskValidator for RiskManager {
         // Check order size
         if let Err(e) = self.check_order_size(signal) {
             // Try to adjust size
-            if let Some(new_size) = self.calculate_adjusted_size(signal, self.config.max_order_size_usd) {
+            if let Some(new_size) =
+                self.calculate_adjusted_size(signal, self.config.max_order_size_usd)
+            {
                 warn!(
                     signal_id = %signal.id,
                     original_size = %signal.size,
@@ -229,6 +291,16 @@ impl RiskValidator for RiskManager {
                 }
             }
             return Err(e);
+        }
+
+        // Apply volatility-based position sizing
+        if let Some((adjusted_size, reason)) =
+            self.calculate_volatility_adjusted_size(signal, state).await
+        {
+            return Ok(RiskDecision::Modified {
+                new_size: adjusted_size,
+                reason,
+            });
         }
 
         Ok(RiskDecision::Approved)

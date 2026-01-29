@@ -23,6 +23,19 @@ circuit_breaker_loss_usd = 300
 # Maximum orders per minute
 max_orders_per_minute = 60
 
+# Volatility-adjusted position sizing
+[risk.volatility]
+# Whether volatility-based sizing is enabled
+enabled = true
+# Rolling window in seconds for volatility calculation
+window_secs = 300
+# Reference/baseline volatility percentage (positions sized normally at this level)
+base_volatility_pct = 5.0
+# Minimum size multiplier floor (e.g., 0.25 = 25% of normal size in extreme volatility)
+min_size_multiplier = 0.25
+# Maximum size multiplier ceiling (e.g., 1.5 = 150% of normal size in low volatility)
+max_size_multiplier = 1.5
+
 [execution]
 # Set to true to log orders without actually submitting
 dry_run = true

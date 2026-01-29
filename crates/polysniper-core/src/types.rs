@@ -263,6 +263,33 @@ impl Default for AuthConfig {
     }
 }
 
+/// Volatility-adjusted position sizing configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VolatilityConfig {
+    /// Whether volatility-based sizing is enabled
+    pub enabled: bool,
+    /// Rolling window in seconds for volatility calculation
+    pub window_secs: u64,
+    /// Reference/baseline volatility percentage (standard deviation)
+    pub base_volatility_pct: Decimal,
+    /// Minimum size multiplier floor (e.g., 0.25 = 25% of normal size)
+    pub min_size_multiplier: Decimal,
+    /// Maximum size multiplier ceiling (e.g., 1.5 = 150% of normal size)
+    pub max_size_multiplier: Decimal,
+}
+
+impl Default for VolatilityConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            window_secs: 300,
+            base_volatility_pct: Decimal::new(5, 0),  // 5%
+            min_size_multiplier: Decimal::new(25, 2), // 0.25
+            max_size_multiplier: Decimal::new(15, 1), // 1.5
+        }
+    }
+}
+
 /// Risk configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskConfig {
@@ -271,6 +298,9 @@ pub struct RiskConfig {
     pub daily_loss_limit_usd: Decimal,
     pub circuit_breaker_loss_usd: Decimal,
     pub max_orders_per_minute: u32,
+    /// Volatility-adjusted position sizing config
+    #[serde(default)]
+    pub volatility: VolatilityConfig,
 }
 
 impl Default for RiskConfig {
@@ -281,6 +311,7 @@ impl Default for RiskConfig {
             daily_loss_limit_usd: Decimal::new(500, 0),
             circuit_breaker_loss_usd: Decimal::new(300, 0),
             max_orders_per_minute: 60,
+            volatility: VolatilityConfig::default(),
         }
     }
 }
