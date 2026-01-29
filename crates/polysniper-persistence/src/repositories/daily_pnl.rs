@@ -141,10 +141,11 @@ impl<'a> DailyPnlRepository<'a> {
 
     /// Get total realized P&L across all days
     pub async fn total_realized_pnl(&self) -> Result<Decimal> {
-        let row =
-            sqlx::query("SELECT COALESCE(SUM(CAST(realized_pnl AS REAL)), 0) as total FROM daily_pnl")
-                .fetch_one(self.db.pool())
-                .await?;
+        let row = sqlx::query(
+            "SELECT COALESCE(SUM(CAST(realized_pnl AS REAL)), 0) as total FROM daily_pnl",
+        )
+        .fetch_one(self.db.pool())
+        .await?;
 
         let total: f64 = row.get("total");
         Ok(Decimal::from_f64_retain(total).unwrap_or(Decimal::ZERO))

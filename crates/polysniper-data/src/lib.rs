@@ -12,7 +12,7 @@ pub use event_bus::BroadcastEventBus;
 pub use gamma_client::GammaClient;
 pub use market_cache::MarketCache;
 pub use openrouter_client::{
-    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, OpenRouterClient,
-    OpenRouterConfig, ResponseFormat,
+    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, OpenRouterClient, OpenRouterConfig,
+    ResponseFormat,
 };
 pub use ws_manager::WsManager;

@@ -29,7 +29,7 @@ impl OrderBuilder {
     pub fn new() -> Self {
         Self {
             default_order_type: OrderType::Gtc,
-            tick_size: Decimal::new(1, 2), // 0.01
+            tick_size: Decimal::new(1, 2),      // 0.01
             size_increment: Decimal::new(1, 0), // 1
         }
     }
@@ -134,7 +134,7 @@ impl OrderBuilder {
     /// Calculate aggressive market price for immediate fills
     fn calculate_market_price(&self, signal: &TradeSignal) -> Decimal {
         match signal.side {
-            Side::Buy => Decimal::new(99, 2),  // 0.99
+            Side::Buy => Decimal::new(99, 2), // 0.99
             Side::Sell => Decimal::new(1, 2), // 0.01
         }
     }
@@ -155,9 +155,18 @@ mod tests {
         let builder = OrderBuilder::new();
 
         // Standard rounding: 0.525 rounds to 0.52 (banker's rounding)
-        assert_eq!(builder.round_price(Decimal::new(525, 3)), Decimal::new(52, 2)); // 0.525 -> 0.52
-        assert_eq!(builder.round_price(Decimal::new(524, 3)), Decimal::new(52, 2)); // 0.524 -> 0.52
-        assert_eq!(builder.round_price(Decimal::new(526, 3)), Decimal::new(53, 2)); // 0.526 -> 0.53
+        assert_eq!(
+            builder.round_price(Decimal::new(525, 3)),
+            Decimal::new(52, 2)
+        ); // 0.525 -> 0.52
+        assert_eq!(
+            builder.round_price(Decimal::new(524, 3)),
+            Decimal::new(52, 2)
+        ); // 0.524 -> 0.52
+        assert_eq!(
+            builder.round_price(Decimal::new(526, 3)),
+            Decimal::new(53, 2)
+        ); // 0.526 -> 0.53
     }
 
     #[test]

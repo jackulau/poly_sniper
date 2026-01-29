@@ -3,23 +3,25 @@
 //! A Rust-based trading bot for Polymarket with multiple sniping strategies.
 
 use anyhow::{Context, Result};
+use chrono::Utc;
 use polysniper_core::{
-    AppConfig, EventBus, OrderExecutor, RiskDecision, RiskValidator, StateManager, StateProvider,
-    Strategy, SystemEvent, TradeSignal,
+    AppConfig, EventBus, HeartbeatEvent, OrderExecutor, RiskDecision, RiskValidator, StateManager,
+    StateProvider, Strategy, SystemEvent, TradeSignal,
 };
 use polysniper_data::{BroadcastEventBus, GammaClient, MarketCache, WsManager};
 use polysniper_execution::{OrderBuilder, OrderSubmitter};
 use polysniper_observability::{
     init_logging, record_event_processing, record_new_market, record_order, record_risk_rejection,
     record_signal, record_strategy_error, record_strategy_processing, start_metrics_server,
-    update_markets_monitored, update_uptime, AlertManager, AlertingConfig, LogFormat,
-    SlackConfig, TelegramConfig,
+    update_markets_monitored, update_uptime, AlertManager, AlertingConfig, LogFormat, SlackConfig,
+    TelegramConfig,
 };
 use polysniper_persistence::{Database, TradeRecord, TradeRepository};
 use polysniper_risk::RiskManager;
 use polysniper_strategies::{
-    EventBasedConfig, EventBasedStrategy, NewMarketConfig, NewMarketStrategy, PriceSpikeConfig,
-    PriceSpikeStrategy, TargetPriceConfig, TargetPriceStrategy,
+    EventBasedConfig, EventBasedStrategy, LlmPredictionConfig, LlmPredictionStrategy,
+    NewMarketConfig, NewMarketStrategy, PriceSpikeConfig, PriceSpikeStrategy, TargetPriceConfig,
+    TargetPriceStrategy,
 };
 use rust_decimal::prelude::ToPrimitive;
 use std::sync::Arc;
@@ -150,8 +152,8 @@ impl App {
 
     /// Load main configuration
     fn load_config() -> Result<AppConfig> {
-        let config_path = std::env::var("POLYSNIPER_CONFIG")
-            .unwrap_or_else(|_| DEFAULT_CONFIG_PATH.to_string());
+        let config_path =
+            std::env::var("POLYSNIPER_CONFIG").unwrap_or_else(|_| DEFAULT_CONFIG_PATH.to_string());
 
         if std::path::Path::new(&config_path).exists() {
             let content = std::fs::read_to_string(&config_path)
@@ -175,32 +177,53 @@ impl App {
                 targets: Vec::new(),
             });
         if target_price_config.enabled {
-            strategies.push(Box::new(TargetPriceStrategy::from_config(target_price_config)));
+            strategies.push(Box::new(TargetPriceStrategy::from_config(
+                target_price_config,
+            )));
             info!("Loaded Target Price strategy");
         }
 
         // Load Price Spike Strategy
-        let price_spike_config = Self::load_strategy_config::<PriceSpikeConfig>("price_spike")?
-            .unwrap_or_default();
+        let price_spike_config =
+            Self::load_strategy_config::<PriceSpikeConfig>("price_spike")?.unwrap_or_default();
         if price_spike_config.enabled {
             strategies.push(Box::new(PriceSpikeStrategy::new(price_spike_config)));
             info!("Loaded Price Spike strategy");
         }
 
         // Load New Market Strategy
-        let new_market_config = Self::load_strategy_config::<NewMarketConfig>("new_market")?
-            .unwrap_or_default();
+        let new_market_config =
+            Self::load_strategy_config::<NewMarketConfig>("new_market")?.unwrap_or_default();
         if new_market_config.enabled {
             strategies.push(Box::new(NewMarketStrategy::new(new_market_config)));
             info!("Loaded New Market strategy");
         }
 
         // Load Event-Based Strategy
-        let event_based_config = Self::load_strategy_config::<EventBasedConfig>("event_based")?
-            .unwrap_or_default();
+        let event_based_config =
+            Self::load_strategy_config::<EventBasedConfig>("event_based")?.unwrap_or_default();
         if event_based_config.enabled {
             strategies.push(Box::new(EventBasedStrategy::new(event_based_config)));
             info!("Loaded Event-Based strategy");
+        }
+
+        // Load LLM Prediction Strategy
+        let llm_prediction_config =
+            Self::load_strategy_config::<LlmPredictionConfig>("llm_prediction")?
+                .unwrap_or_default();
+        if llm_prediction_config.enabled {
+            match LlmPredictionStrategy::new(llm_prediction_config) {
+                Ok(strategy) => {
+                    strategies.push(Box::new(strategy));
+                    info!("Loaded LLM Prediction Strategy");
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to initialize LLM Prediction Strategy: {}. Skipping.",
+                        e
+                    );
+                }
+            }
         }
 
         Ok(strategies)
@@ -301,6 +324,20 @@ impl App {
             }
         });
 
+        // Spawn heartbeat emitter for strategies (e.g., LLM prediction)
+        let heartbeat_event_bus = self.event_bus.clone();
+        tokio::spawn(async move {
+            let mut heartbeat_interval = interval(Duration::from_secs(60));
+            loop {
+                heartbeat_interval.tick().await;
+                let heartbeat = SystemEvent::Heartbeat(HeartbeatEvent {
+                    source: "main".to_string(),
+                    timestamp: Utc::now(),
+                });
+                heartbeat_event_bus.publish(heartbeat);
+            }
+        });
+
         // Main event processing loop
         let mut event_rx = self.event_bus.subscribe();
 
@@ -309,10 +346,7 @@ impl App {
             self.config.execution.dry_run
         );
         info!("Loaded {} strategies", self.strategies.len());
-        info!(
-            "Monitoring {} markets",
-            self.state.market_count().await
-        );
+        info!("Monitoring {} markets", self.state.market_count().await);
 
         // Update initial market count metric
         update_markets_monitored(self.state.market_count().await as i64);
@@ -506,7 +540,11 @@ impl App {
                                 "Order submitted successfully"
                             );
                             self.risk_manager.record_order(&signal.market_id).await;
-                            record_order(&signal.strategy_id, &signal.side.to_string(), "submitted");
+                            record_order(
+                                &signal.strategy_id,
+                                &signal.side.to_string(),
+                                "submitted",
+                            );
 
                             // Persist trade if database is available
                             if let Some(db) = &self.database {
@@ -593,12 +631,8 @@ impl App {
                     if e.to_string().contains("circuit breaker") {
                         polysniper_observability::metrics::CIRCUIT_BREAKER_TRIGGERED.inc();
                         if let Some(alert_mgr) = &self.alert_manager {
-                            let daily_pnl = self
-                                .state
-                                .get_daily_pnl()
-                                .await
-                                .to_f64()
-                                .unwrap_or(0.0);
+                            let daily_pnl =
+                                self.state.get_daily_pnl().await.to_f64().unwrap_or(0.0);
                             alert_mgr
                                 .alert_circuit_breaker(&e.to_string(), daily_pnl)
                                 .await;

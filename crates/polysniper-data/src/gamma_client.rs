@@ -117,7 +117,10 @@ impl GammaClient {
     }
 
     /// Fetch a single market by condition ID
-    pub async fn fetch_market(&self, condition_id: &str) -> Result<Option<Market>, DataSourceError> {
+    pub async fn fetch_market(
+        &self,
+        condition_id: &str,
+    ) -> Result<Option<Market>, DataSourceError> {
         let url = format!("{}/markets/{}", self.base_url, condition_id);
 
         debug!("Fetching market from Gamma: {}", url);

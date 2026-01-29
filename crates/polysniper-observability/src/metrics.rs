@@ -3,8 +3,8 @@
 use axum::{routing::get, Router};
 use lazy_static::lazy_static;
 use prometheus::{
-    CounterVec, Gauge, GaugeVec, HistogramOpts, HistogramVec, IntCounter,
-    IntCounterVec, IntGauge, Opts, Registry, TextEncoder,
+    CounterVec, Gauge, GaugeVec, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge,
+    Opts, Registry, TextEncoder,
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -183,7 +183,9 @@ pub fn register_metrics() {
     REGISTRY
         .register(Box::new(CIRCUIT_BREAKER_TRIGGERED.clone()))
         .ok();
-    REGISTRY.register(Box::new(CURRENT_POSITION_USD.clone())).ok();
+    REGISTRY
+        .register(Box::new(CURRENT_POSITION_USD.clone()))
+        .ok();
     REGISTRY.register(Box::new(ORDERS_PER_MINUTE.clone())).ok();
 
     // Event metrics
@@ -207,14 +209,22 @@ pub fn register_metrics() {
     REGISTRY.register(Box::new(PRICE_UPDATES.clone())).ok();
 
     // Connection metrics
-    REGISTRY.register(Box::new(WEBSOCKET_CONNECTED.clone())).ok();
-    REGISTRY.register(Box::new(WEBSOCKET_RECONNECTS.clone())).ok();
+    REGISTRY
+        .register(Box::new(WEBSOCKET_CONNECTED.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(WEBSOCKET_RECONNECTS.clone()))
+        .ok();
     REGISTRY.register(Box::new(API_REQUESTS.clone())).ok();
-    REGISTRY.register(Box::new(API_REQUEST_DURATION.clone())).ok();
+    REGISTRY
+        .register(Box::new(API_REQUEST_DURATION.clone()))
+        .ok();
 
     // Alerting metrics
     REGISTRY.register(Box::new(ALERTS_SENT.clone())).ok();
-    REGISTRY.register(Box::new(ALERT_SEND_FAILURES.clone())).ok();
+    REGISTRY
+        .register(Box::new(ALERT_SEND_FAILURES.clone()))
+        .ok();
 
     // System metrics
     REGISTRY.register(Box::new(UPTIME_SECONDS.clone())).ok();
@@ -224,7 +234,9 @@ pub fn register_metrics() {
 pub fn gather_metrics() -> String {
     let encoder = TextEncoder::new();
     let metric_families = REGISTRY.gather();
-    encoder.encode_to_string(&metric_families).unwrap_or_default()
+    encoder
+        .encode_to_string(&metric_families)
+        .unwrap_or_default()
 }
 
 /// Metrics HTTP handler
@@ -255,13 +267,11 @@ pub async fn start_metrics_server(port: u16) -> tokio::task::JoinHandle<()> {
     })
 }
 
-/// Helper functions for recording metrics
+// Helper functions for recording metrics
 
 /// Record a trade signal
 pub fn record_signal(strategy: &str, side: &str) {
-    SIGNALS_GENERATED
-        .with_label_values(&[strategy, side])
-        .inc();
+    SIGNALS_GENERATED.with_label_values(&[strategy, side]).inc();
 }
 
 /// Record an order submission

@@ -125,9 +125,9 @@ impl SlackChannel {
 
     fn level_to_color(&self, level: AlertLevel) -> &str {
         match level {
-            AlertLevel::Info => "#36a64f",      // green
-            AlertLevel::Warning => "#ff9800",   // orange
-            AlertLevel::Critical => "#ff0000",  // red
+            AlertLevel::Info => "#36a64f",     // green
+            AlertLevel::Warning => "#ff9800",  // orange
+            AlertLevel::Critical => "#ff0000", // red
         }
     }
 
@@ -228,9 +228,9 @@ impl TelegramChannel {
 
     fn level_to_emoji(&self, level: AlertLevel) -> &str {
         match level {
-            AlertLevel::Info => "\u{2139}\u{fe0f}",       // ℹ️
-            AlertLevel::Warning => "\u{26a0}\u{fe0f}",    // ⚠️
-            AlertLevel::Critical => "\u{1f6a8}",          // 🚨
+            AlertLevel::Info => "\u{2139}\u{fe0f}",    // ℹ️
+            AlertLevel::Warning => "\u{26a0}\u{fe0f}", // ⚠️
+            AlertLevel::Critical => "\u{1f6a8}",       // 🚨
         }
     }
 
@@ -284,9 +284,7 @@ impl AlertChannel for TelegramChannel {
     }
 
     fn is_enabled(&self) -> bool {
-        self.config.enabled
-            && !self.config.bot_token.is_empty()
-            && !self.config.chat_id.is_empty()
+        self.config.enabled && !self.config.bot_token.is_empty() && !self.config.chat_id.is_empty()
     }
 }
 
@@ -338,10 +336,7 @@ impl AlertManager {
             channels.push(Box::new(TelegramChannel::new(config.telegram.clone())));
         }
 
-        info!(
-            channels = channels.len(),
-            "Alert manager initialized"
-        );
+        info!(channels = channels.len(), "Alert manager initialized");
 
         Self {
             config,
