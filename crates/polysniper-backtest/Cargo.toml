@@ -1,0 +1,25 @@
+[package]
+name = "polysniper-backtest"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+polysniper-core = { path = "../polysniper-core" }
+polysniper-persistence = { path = "../polysniper-persistence" }
+polysniper-strategies = { path = "../polysniper-strategies" }
+
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+sqlx.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
