@@ -31,6 +31,17 @@ max_retries = 3
 # Delay between retries in milliseconds
 retry_delay_ms = 100
 
+# Queue Position Estimation
+[execution.queue_estimation]
+# Whether queue estimation is enabled
+enabled = true
+# How far back to look for fill rates (in seconds)
+history_window_secs = 300
+# Minimum fills needed for reliable estimation
+min_samples_for_estimate = 10
+# How quickly confidence decays with time (0.0 to 1.0)
+confidence_decay_factor = 0.95
+
 # Phase 5: SQLite Persistence
 [persistence]
 # Whether persistence is enabled

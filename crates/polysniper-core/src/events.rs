@@ -1,4 +1,4 @@
-use crate::types::{Market, MarketId, Orderbook, Position, TokenId, TradeSignal};
+use crate::types::{Market, MarketId, Orderbook, Position, QueuePosition, TokenId, TradeSignal};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -27,6 +27,9 @@ pub enum SystemEvent {
     /// Trade executed
     TradeExecuted(TradeExecutedEvent),
 
+    /// Queue position update for a tracked order
+    QueueUpdate(QueueUpdateEvent),
+
     /// Connection status change
     ConnectionStatus(ConnectionStatusEvent),
 
@@ -45,6 +48,7 @@ impl SystemEvent {
             SystemEvent::ExternalSignal(_) => "external_signal",
             SystemEvent::PositionUpdate(_) => "position_update",
             SystemEvent::TradeExecuted(_) => "trade_executed",
+            SystemEvent::QueueUpdate(_) => "queue_update",
             SystemEvent::ConnectionStatus(_) => "connection_status",
             SystemEvent::Heartbeat(_) => "heartbeat",
         }
@@ -60,6 +64,7 @@ impl SystemEvent {
             SystemEvent::ExternalSignal(e) => e.received_at,
             SystemEvent::PositionUpdate(e) => e.timestamp,
             SystemEvent::TradeExecuted(e) => e.timestamp,
+            SystemEvent::QueueUpdate(e) => e.timestamp,
             SystemEvent::ConnectionStatus(e) => e.timestamp,
             SystemEvent::Heartbeat(e) => e.timestamp,
         }
@@ -75,6 +80,7 @@ impl SystemEvent {
             SystemEvent::ExternalSignal(e) => e.market_id.as_ref(),
             SystemEvent::PositionUpdate(e) => Some(&e.market_id),
             SystemEvent::TradeExecuted(e) => Some(&e.market_id),
+            SystemEvent::QueueUpdate(e) => Some(&e.market_id),
             SystemEvent::ConnectionStatus(_) => None,
             SystemEvent::Heartbeat(_) => None,
         }
@@ -217,5 +223,20 @@ pub enum ConnectionState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeartbeatEvent {
     pub source: String,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Queue position update event for a tracked order
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueueUpdateEvent {
+    /// Order ID being tracked
+    pub order_id: String,
+    /// Token ID for the order
+    pub token_id: TokenId,
+    /// Market ID for the order
+    pub market_id: MarketId,
+    /// Updated queue position information
+    pub position: QueuePosition,
+    /// When this update was calculated
     pub timestamp: DateTime<Utc>,
 }
