@@ -136,66 +136,13 @@ bot_token = ""
 chat_id = ""
 parse_mode = "HTML"
 
-# Gas Price Tracking
-[gas]
-# Whether gas tracking is enabled
-enabled = true
-# Poll interval in seconds
-poll_interval_secs = 10
-# Primary RPC endpoint for eth_gasPrice
-rpc_endpoint = "https://polygon-rpc.com"
-# Fallback Polygonscan Gas Oracle API endpoint (optional)
-# fallback_endpoint = "https://api.polygonscan.com/api?module=gastracker&action=gasoracle"
-# Cache TTL in seconds
-cache_ttl_secs = 10
-# History duration in seconds (1 hour)
-history_duration_secs = 3600
-
-# Gas condition thresholds (in gwei)
-[gas.thresholds]
-# Below this is considered Low
-low = 30
-# Below this is considered Normal (above low)
-normal = 100
-# Below this is considered High (above normal) - above this is Extreme
-high = 300
-
-# Gas Optimization - intelligent order timing based on gas prices
-[gas.optimization]
-# Whether gas optimization is enabled
-enabled = true
-# Enable order batching for same token/market
-batch_enabled = true
-# Minimum orders to batch before considering batch submission
-batch_min_orders = 2
-# Maximum time to wait for batch accumulation (seconds)
-batch_max_wait_secs = 30
-# Queue processing interval in milliseconds
-queue_process_interval_ms = 1000
-
-# CRITICAL priority: Execute immediately regardless of gas
-[gas.optimization.critical]
-# Maximum gas price in gwei (high limit for critical)
-max_gas_gwei = 1000
-# Maximum time to wait in queue (0 = never queue)
-max_queue_time_secs = 0
-# Execution strategy: immediate, wait_for_low, or time_window
-strategy = "immediate"
-
-# HIGH priority: Short delay acceptable, still time-sensitive
-[gas.optimization.high]
-max_gas_gwei = 200
-max_queue_time_secs = 60
-strategy = "time_window"
-
-# NORMAL priority: Standard orders, can wait for better gas
-[gas.optimization.normal]
-max_gas_gwei = 100
-max_queue_time_secs = 300
-strategy = "wait_for_low"
-
-# LOW priority: Non-urgent, maximize gas savings
-[gas.optimization.low]
-max_gas_gwei = 50
-max_queue_time_secs = 900
-strategy = "wait_for_low"
+# ML Webhook Server Configuration
+[webhook]
+# Whether the webhook server is enabled
+enabled = false
+# Host to bind the server to
+host = "127.0.0.1"
+# Port to listen on
+port = 8080
+# Optional API key for authentication (checked via X-API-Key header)
+# api_key = "your-secret-key"
