@@ -183,7 +183,9 @@ impl RiskValidator for RiskManager {
         // Check order size
         if let Err(e) = self.check_order_size(signal) {
             // Try to adjust size
-            if let Some(new_size) = self.calculate_adjusted_size(signal, self.config.max_order_size_usd) {
+            if let Some(new_size) =
+                self.calculate_adjusted_size(signal, self.config.max_order_size_usd)
+            {
                 warn!(
                     signal_id = %signal.id,
                     original_size = %signal.size,

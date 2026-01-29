@@ -1,0 +1,108 @@
+# Multi-Leg Correlated Market Strategy Configuration
+#
+# This strategy identifies and trades correlated positions across related markets,
+# such as election outcomes where results in one market imply results in another.
+
+[strategy]
+enabled = false
+
+# Minimum edge (mispricing) percentage required to trigger a trade
+# 0.02 = 2% minimum edge
+min_edge_pct = "0.02"
+
+# Order size in USD per leg of the trade
+order_size_usd = "50"
+
+# Cooldown period in seconds after generating signals for a rule
+# Prevents repeated signals on the same mispricing
+cooldown_secs = 120
+
+# Minimum liquidity in USD required for all markets in a rule
+min_liquidity_usd = "1000"
+
+# Example: Mutually Exclusive Markets
+# These markets represent outcomes that cannot all be true simultaneously.
+# The sum of YES token prices should equal 1.0 (or expected_sum).
+#
+# [[strategy.correlation_rules]]
+# name = "2024 Presidential Election"
+# relationship = "mutually_exclusive"
+# expected_sum = "1.0"
+# tolerance = "0.01"
+#
+# [[strategy.correlation_rules.legs]]
+# market_id = "biden-wins-2024"
+# token = "Yes"
+# weight = "1.0"
+#
+# [[strategy.correlation_rules.legs]]
+# market_id = "trump-wins-2024"
+# token = "Yes"
+# weight = "1.0"
+#
+# [[strategy.correlation_rules.legs]]
+# market_id = "other-candidate-2024"
+# token = "Yes"
+# weight = "1.0"
+
+# Example: Inverse Correlation
+# Markets that move in opposite directions.
+# If A goes up, B should go down, and vice versa.
+# For binary elections: A YES + B YES should sum close to 1.0
+#
+# [[strategy.correlation_rules]]
+# name = "Biden vs Trump Inverse"
+# relationship = "inverse"
+# expected_sum = "1.0"
+# tolerance = "0.01"
+#
+# [[strategy.correlation_rules.legs]]
+# market_id = "biden-wins-2024"
+# token = "Yes"
+# weight = "1.0"
+#
+# [[strategy.correlation_rules.legs]]
+# market_id = "trump-wins-2024"
+# token = "Yes"
+# weight = "1.0"
+
+# Example: Conditional/Implied Markets
+# A implies B: If A happens, B must happen.
+# Example: "Biden wins" implies "Democrat wins"
+# So Biden YES price should always be <= Democrat YES price.
+#
+# [[strategy.correlation_rules]]
+# name = "Biden implies Democrat Victory"
+# relationship = "conditional"
+# tolerance = "0.01"
+#
+# [[strategy.correlation_rules.legs]]
+# # First leg is the antecedent (the specific outcome)
+# market_id = "biden-wins-2024"
+# token = "Yes"
+# weight = "1.0"
+#
+# [[strategy.correlation_rules.legs]]
+# # Second leg is the consequent (the implied outcome)
+# market_id = "democrat-wins-2024"
+# token = "Yes"
+# weight = "1.0"
+
+# Example: Sequential Events
+# "Will X happen by March?" implies "Will X happen by December?"
+# Earlier date YES price should be <= later date YES price.
+#
+# [[strategy.correlation_rules]]
+# name = "Rate Cut Timeline"
+# relationship = "conditional"
+# tolerance = "0.01"
+#
+# [[strategy.correlation_rules.legs]]
+# market_id = "fed-rate-cut-march-2024"
+# token = "Yes"
+# weight = "1.0"
+#
+# [[strategy.correlation_rules.legs]]
+# market_id = "fed-rate-cut-december-2024"
+# token = "Yes"
+# weight = "1.0"

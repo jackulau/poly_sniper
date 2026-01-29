@@ -1,6 +1,8 @@
 //! Order submitter with retry logic
 
-use polysniper_core::{ExecutionConfig, ExecutionError, Order, OrderExecutor, OrderStatus, OrderStatusResponse};
+use polysniper_core::{
+    ExecutionConfig, ExecutionError, Order, OrderExecutor, OrderStatus, OrderStatusResponse,
+};
 use reqwest::Client;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -222,7 +224,9 @@ impl OrderSubmitter {
 
         if !clob_response.success {
             return Err(ExecutionError::SubmissionError(
-                clob_response.error_msg.unwrap_or_else(|| "Unknown error".to_string()),
+                clob_response
+                    .error_msg
+                    .unwrap_or_else(|| "Unknown error".to_string()),
             ));
         }
 
@@ -267,7 +271,10 @@ impl OrderExecutor for OrderSubmitter {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(ExecutionError::Cancelled(format!("HTTP {}: {}", status, body)));
+            return Err(ExecutionError::Cancelled(format!(
+                "HTTP {}: {}",
+                status, body
+            )));
         }
 
         let cancel_response: ClobCancelResponse = response
@@ -277,7 +284,9 @@ impl OrderExecutor for OrderSubmitter {
 
         if !cancel_response.success {
             return Err(ExecutionError::Cancelled(
-                cancel_response.error_msg.unwrap_or_else(|| "Unknown error".to_string()),
+                cancel_response
+                    .error_msg
+                    .unwrap_or_else(|| "Unknown error".to_string()),
             ));
         }
 
@@ -285,7 +294,10 @@ impl OrderExecutor for OrderSubmitter {
         Ok(())
     }
 
-    async fn get_order_status(&self, order_id: &str) -> Result<OrderStatusResponse, ExecutionError> {
+    async fn get_order_status(
+        &self,
+        order_id: &str,
+    ) -> Result<OrderStatusResponse, ExecutionError> {
         let url = format!("{}/order/{}", self.base_url, order_id);
 
         let response = self
@@ -302,7 +314,10 @@ impl OrderExecutor for OrderSubmitter {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(ExecutionError::SubmissionError(format!("HTTP {}: {}", status, body)));
+            return Err(ExecutionError::SubmissionError(format!(
+                "HTTP {}: {}",
+                status, body
+            )));
         }
 
         let status_response: ClobOrderStatusResponse = response

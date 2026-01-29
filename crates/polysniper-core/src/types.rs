@@ -58,18 +58,13 @@ impl fmt::Display for Outcome {
 }
 
 /// Priority level for trade signals
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Priority {
     Low = 0,
+    #[default]
     Normal = 1,
     High = 2,
     Critical = 3,
-}
-
-impl Default for Priority {
-    fn default() -> Self {
-        Priority::Normal
-    }
 }
 
 /// Market metadata from Gamma API
@@ -406,11 +401,15 @@ impl Default for AlertingConfig {
 }
 
 /// Main application configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AppConfig {
+    #[serde(default)]
     pub endpoints: EndpointConfig,
+    #[serde(default)]
     pub auth: AuthConfig,
+    #[serde(default)]
     pub risk: RiskConfig,
+    #[serde(default)]
     pub execution: ExecutionConfig,
     #[serde(default)]
     pub persistence: PersistenceConfig,
@@ -418,18 +417,4 @@ pub struct AppConfig {
     pub metrics: MetricsConfig,
     #[serde(default)]
     pub alerting: AlertingConfig,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            endpoints: EndpointConfig::default(),
-            auth: AuthConfig::default(),
-            risk: RiskConfig::default(),
-            execution: ExecutionConfig::default(),
-            persistence: PersistenceConfig::default(),
-            metrics: MetricsConfig::default(),
-            alerting: AlertingConfig::default(),
-        }
-    }
 }

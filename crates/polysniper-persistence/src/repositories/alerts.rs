@@ -60,13 +60,12 @@ impl<'a> AlertRepository<'a> {
 
     /// Get alerts by level
     pub async fn get_by_level(&self, level: AlertLevel, limit: i64) -> Result<Vec<AlertRecord>> {
-        let rows = sqlx::query(
-            "SELECT * FROM alerts WHERE level = ? ORDER BY created_at DESC LIMIT ?",
-        )
-        .bind(level.to_string())
-        .bind(limit)
-        .fetch_all(self.db.pool())
-        .await?;
+        let rows =
+            sqlx::query("SELECT * FROM alerts WHERE level = ? ORDER BY created_at DESC LIMIT ?")
+                .bind(level.to_string())
+                .bind(limit)
+                .fetch_all(self.db.pool())
+                .await?;
 
         rows.iter().map(Self::row_to_alert).collect()
     }
