@@ -1,10 +1,10 @@
 //! Gamma API client for market discovery
 
 use chrono::{DateTime, Utc};
-use polysniper_core::{DataSourceError, Market, MarketId, MarketPoller};
+use polysniper_core::{DataSourceError, Market, MarketId, MarketPoller, MarketState};
 use reqwest::Client;
 use rust_decimal::Decimal;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{debug, info};
 
@@ -39,6 +39,8 @@ struct GammaMarket {
     #[serde(default)]
     closed: bool,
     #[serde(default)]
+    resolved: bool,
+    #[serde(default)]
     volume: String,
     #[serde(default)]
     liquidity: String,
@@ -46,12 +48,41 @@ struct GammaMarket {
     created_at: Option<String>,
     #[serde(default)]
     end_date_iso: Option<String>,
+    #[serde(default)]
+    resolution_source: Option<String>,
+    #[serde(default)]
+    winning_outcome: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 struct GammaToken {
     token_id: String,
     outcome: String,
+}
+
+/// Market status response from Gamma API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketStatus {
+    /// Market condition ID
+    pub market_id: MarketId,
+    /// Current market state
+    pub state: MarketState,
+    /// Human-readable market question
+    pub question: String,
+    /// When the market is expected to resolve
+    pub end_date: Option<DateTime<Utc>>,
+    /// Whether the market is active for trading
+    pub active: bool,
+    /// Whether the market is closed
+    pub closed: bool,
+    /// Whether the market has resolved
+    pub resolved: bool,
+    /// The winning outcome (if resolved)
+    pub winning_outcome: Option<String>,
+    /// Source of resolution (if resolved)
+    pub resolution_source: Option<String>,
+    /// When the status was fetched
+    pub fetched_at: DateTime<Utc>,
 }
 
 /// Gamma API client
@@ -186,6 +217,86 @@ impl GammaClient {
         info!("Found {} markets for query '{}'", markets.len(), query);
 
         Ok(markets)
+    }
+
+    /// Fetch market status including resolution state
+    pub async fn fetch_market_status(
+        &self,
+        market_id: &MarketId,
+    ) -> Result<Option<MarketStatus>, DataSourceError> {
+        let url = format!("{}/markets/{}", self.base_url, market_id);
+
+        debug!("Fetching market status from Gamma: {}", url);
+
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| DataSourceError::HttpError(e.to_string()))?;
+
+        if response.status().as_u16() == 404 {
+            return Ok(None);
+        }
+
+        if !response.status().is_success() {
+            return Err(DataSourceError::HttpError(format!(
+                "Gamma API returned status {}",
+                response.status()
+            )));
+        }
+
+        let gamma_market: GammaMarket = response
+            .json()
+            .await
+            .map_err(|e| DataSourceError::ParseError(e.to_string()))?;
+
+        Ok(Some(self.convert_market_status(gamma_market)))
+    }
+
+    /// Fetch status for multiple markets in parallel
+    pub async fn fetch_market_statuses(
+        &self,
+        market_ids: &[MarketId],
+    ) -> Vec<Result<Option<MarketStatus>, DataSourceError>> {
+        let futures: Vec<_> = market_ids
+            .iter()
+            .map(|id| self.fetch_market_status(id))
+            .collect();
+
+        futures::future::join_all(futures).await
+    }
+
+    fn convert_market_status(&self, gm: GammaMarket) -> MarketStatus {
+        let end_date = gm
+            .end_date_iso
+            .as_ref()
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&Utc));
+
+        // Determine market state based on flags
+        let state = if gm.resolved {
+            MarketState::Resolved
+        } else if gm.closed {
+            MarketState::Closed
+        } else if !gm.active {
+            MarketState::Paused
+        } else {
+            MarketState::Active
+        };
+
+        MarketStatus {
+            market_id: gm.condition_id,
+            state,
+            question: gm.question,
+            end_date,
+            active: gm.active,
+            closed: gm.closed,
+            resolved: gm.resolved,
+            winning_outcome: gm.winning_outcome,
+            resolution_source: gm.resolution_source,
+            fetched_at: Utc::now(),
+        }
     }
 
     fn convert_market(&self, gm: GammaMarket) -> Option<Market> {

@@ -1,3 +1,4 @@
+use crate::resolution::ResolutionConfig;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -418,6 +419,8 @@ pub struct AppConfig {
     pub metrics: MetricsConfig,
     #[serde(default)]
     pub alerting: AlertingConfig,
+    #[serde(default)]
+    pub resolution: ResolutionConfig,
 }
 
 impl Default for AppConfig {
@@ -430,6 +433,7 @@ impl Default for AppConfig {
             persistence: PersistenceConfig::default(),
             metrics: MetricsConfig::default(),
             alerting: AlertingConfig::default(),
+            resolution: ResolutionConfig::default(),
         }
     }
 }
