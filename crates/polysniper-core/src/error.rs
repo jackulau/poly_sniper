@@ -70,6 +70,9 @@ pub enum RiskError {
 
     #[error("Validation error: {0}")]
     ValidationError(String),
+
+    #[error("Correlated exposure limit exceeded: {0}")]
+    CorrelatedExposureExceeded(String),
 }
 
 /// Execution errors
