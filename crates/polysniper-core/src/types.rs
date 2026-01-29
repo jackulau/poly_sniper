@@ -263,6 +263,65 @@ impl Default for AuthConfig {
     }
 }
 
+/// Action to take when a time rule matches
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum TimeRuleAction {
+    /// Reduce position size by a multiplier (0.0 - 1.0)
+    ReduceSize { multiplier: Decimal },
+    /// Block new positions but allow exits
+    BlockNew,
+    /// Halt all trading on the market
+    HaltAll,
+}
+
+/// A single time-based risk rule
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimeRule {
+    /// Rule name for identification and logging
+    pub name: String,
+    /// Hours before event/resolution when rule activates
+    pub hours_before: u64,
+    /// Action to take when rule matches
+    pub action: TimeRuleAction,
+    /// Market patterns to match (glob patterns like "*", "election*", etc.)
+    pub applies_to: Vec<String>,
+}
+
+/// Configuration for time-based risk rules
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimeRulesConfig {
+    /// Whether time rules are enabled
+    pub enabled: bool,
+    /// List of time-based rules (evaluated in order, most restrictive wins)
+    #[serde(default)]
+    pub rules: Vec<TimeRule>,
+}
+
+impl Default for TimeRulesConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            rules: vec![
+                TimeRule {
+                    name: "pre_resolution_reduction".to_string(),
+                    hours_before: 24,
+                    action: TimeRuleAction::ReduceSize {
+                        multiplier: Decimal::new(5, 1), // 0.5
+                    },
+                    applies_to: vec!["*".to_string()],
+                },
+                TimeRule {
+                    name: "resolution_block".to_string(),
+                    hours_before: 2,
+                    action: TimeRuleAction::BlockNew,
+                    applies_to: vec!["*".to_string()],
+                },
+            ],
+        }
+    }
+}
+
 /// Risk configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskConfig {
@@ -271,6 +330,8 @@ pub struct RiskConfig {
     pub daily_loss_limit_usd: Decimal,
     pub circuit_breaker_loss_usd: Decimal,
     pub max_orders_per_minute: u32,
+    #[serde(default)]
+    pub time_rules: TimeRulesConfig,
 }
 
 impl Default for RiskConfig {
@@ -281,6 +342,7 @@ impl Default for RiskConfig {
             daily_loss_limit_usd: Decimal::new(500, 0),
             circuit_breaker_loss_usd: Decimal::new(300, 0),
             max_orders_per_minute: 60,
+            time_rules: TimeRulesConfig::default(),
         }
     }
 }

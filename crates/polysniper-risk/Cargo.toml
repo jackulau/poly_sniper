@@ -9,7 +9,11 @@ polysniper-core = { path = "../polysniper-core" }
 tokio.workspace = true
 async-trait.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 rust_decimal.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 chrono.workspace = true
+
+[dev-dependencies]
+rust_decimal_macros.workspace = true
