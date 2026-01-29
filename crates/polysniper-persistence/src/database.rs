@@ -165,6 +165,28 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
+        // Position history table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS position_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                market_id TEXT NOT NULL,
+                token_id TEXT NOT NULL,
+                side TEXT NOT NULL,
+                entry_price TEXT NOT NULL,
+                exit_price TEXT,
+                size TEXT NOT NULL,
+                realized_pnl TEXT,
+                fees TEXT NOT NULL DEFAULT '0',
+                opened_at TEXT NOT NULL,
+                closed_at TEXT,
+                strategy_id TEXT
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         // Create indexes for common queries
         sqlx::query(
             r#"
@@ -177,6 +199,11 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_price_snapshots_timestamp ON price_snapshots(timestamp);
             CREATE INDEX IF NOT EXISTS idx_alerts_level ON alerts(level);
             CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at);
+            CREATE INDEX IF NOT EXISTS idx_position_history_market ON position_history(market_id);
+            CREATE INDEX IF NOT EXISTS idx_position_history_token ON position_history(token_id);
+            CREATE INDEX IF NOT EXISTS idx_position_history_strategy ON position_history(strategy_id);
+            CREATE INDEX IF NOT EXISTS idx_position_history_opened ON position_history(opened_at);
+            CREATE INDEX IF NOT EXISTS idx_position_history_closed ON position_history(closed_at);
             "#,
         )
         .execute(&self.pool)

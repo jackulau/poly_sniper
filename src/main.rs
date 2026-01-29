@@ -18,14 +18,18 @@ use polysniper_observability::{
     update_markets_monitored, update_uptime, AlertManager, AlertingConfig, LogFormat, SlackConfig,
     TelegramConfig,
 };
-use polysniper_persistence::{Database, TradeRecord, TradeRepository};
-use polysniper_risk::{ControlServer, RiskManager, SignalHandler};
+use polysniper_persistence::{
+    calculate_trade_pnl, CostBasisMethod, DailyPnlRepository, Database,
+    PositionHistoryRepository, TradeRecord, TradeRepository,
+};
+use polysniper_risk::RiskManager;
 use polysniper_strategies::{
     EventBasedConfig, EventBasedStrategy, LlmPredictionConfig, LlmPredictionStrategy,
     NewMarketConfig, NewMarketStrategy, PriceSpikeConfig, PriceSpikeStrategy, TargetPriceConfig,
     TargetPriceStrategy,
 };
 use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
@@ -834,8 +838,30 @@ impl App {
                                 "submitted",
                             );
 
-                            // Persist trade if database is available
+                            // Persist trade and update P&L if database is available
                             if let Some(db) = &self.database {
+                                // Get current position to calculate P&L
+                                let current_position = self.state.get_position(&signal.market_id).await;
+                                let (current_size, current_avg_price) = current_position
+                                    .as_ref()
+                                    .map(|p| (p.size, p.avg_price))
+                                    .unwrap_or((Decimal::ZERO, Decimal::ZERO));
+
+                                // Calculate estimated fees (0.1% taker fee)
+                                let executed_price = signal.price.unwrap_or_default();
+                                let fees = signal.size_usd * Decimal::new(1, 3); // 0.001 = 0.1%
+
+                                // Calculate P&L for this trade
+                                let pnl_result = calculate_trade_pnl(
+                                    current_size,
+                                    current_avg_price,
+                                    signal.side,
+                                    executed_price,
+                                    signal.size,
+                                    fees,
+                                    CostBasisMethod::Average,
+                                );
+
                                 let trade = TradeRecord {
                                     id: uuid::Uuid::new_v4().to_string(),
                                     order_id: order_id.clone(),
@@ -844,17 +870,118 @@ impl App {
                                     market_id: signal.market_id.clone(),
                                     token_id: signal.token_id.clone(),
                                     side: signal.side,
-                                    executed_price: signal.price.unwrap_or_default(),
+                                    executed_price,
                                     executed_size: signal.size,
                                     size_usd: signal.size_usd,
-                                    fees: rust_decimal::Decimal::ZERO,
-                                    realized_pnl: None,
+                                    fees,
+                                    realized_pnl: if pnl_result.realized_pnl != Decimal::ZERO {
+                                        Some(pnl_result.realized_pnl)
+                                    } else {
+                                        None
+                                    },
                                     timestamp: chrono::Utc::now(),
                                     metadata: Some(signal.metadata.clone()),
                                 };
+
+                                // Insert trade record
                                 let trade_repo = TradeRepository::new(db);
                                 if let Err(e) = trade_repo.insert(&trade).await {
                                     warn!(error = %e, "Failed to persist trade");
+                                }
+
+                                // Update daily P&L if there was realized P&L
+                                if pnl_result.realized_pnl != Decimal::ZERO {
+                                    let daily_pnl_repo = DailyPnlRepository::new(db);
+                                    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+
+                                    // Ensure today's record exists
+                                    let starting_balance = self.state.get_portfolio_value().await;
+                                    if let Err(e) = daily_pnl_repo.get_or_create_today(starting_balance).await {
+                                        warn!(error = %e, "Failed to create daily P&L record");
+                                    }
+
+                                    // Add realized P&L
+                                    if let Err(e) = daily_pnl_repo
+                                        .add_realized_pnl(&today, pnl_result.realized_pnl, pnl_result.is_win)
+                                        .await
+                                    {
+                                        warn!(error = %e, "Failed to update daily P&L");
+                                    }
+
+                                    // Update in-memory daily P&L
+                                    self.state.update_daily_pnl(pnl_result.realized_pnl).await;
+
+                                    info!(
+                                        trade_id = %trade.id,
+                                        realized_pnl = %pnl_result.realized_pnl,
+                                        is_win = %pnl_result.is_win,
+                                        "Recorded realized P&L"
+                                    );
+                                }
+
+                                // Update position in MarketCache
+                                let updated_position = polysniper_core::Position {
+                                    market_id: signal.market_id.clone(),
+                                    token_id: signal.token_id.clone(),
+                                    outcome: signal.outcome,
+                                    size: pnl_result.new_size,
+                                    avg_price: pnl_result.new_avg_price,
+                                    realized_pnl: current_position
+                                        .as_ref()
+                                        .map(|p| p.realized_pnl + pnl_result.realized_pnl)
+                                        .unwrap_or(pnl_result.realized_pnl),
+                                    unrealized_pnl: Decimal::ZERO, // Will be updated by price changes
+                                    updated_at: chrono::Utc::now(),
+                                };
+                                self.state.update_position(updated_position).await;
+
+                                // Track position history
+                                let pos_history_repo = PositionHistoryRepository::new(db);
+                                match signal.side {
+                                    polysniper_core::Side::Buy => {
+                                        // Opening or adding to position
+                                        if current_size.is_zero() {
+                                            // New position
+                                            if let Err(e) = pos_history_repo
+                                                .open_position(
+                                                    &signal.market_id,
+                                                    &signal.token_id,
+                                                    signal.side,
+                                                    executed_price,
+                                                    signal.size,
+                                                    fees,
+                                                    Some(&signal.strategy_id),
+                                                )
+                                                .await
+                                            {
+                                                warn!(error = %e, "Failed to record position open");
+                                            }
+                                        }
+                                    }
+                                    polysniper_core::Side::Sell => {
+                                        // Reducing or closing position
+                                        if pnl_result.new_size.is_zero() {
+                                            // Position closed - find and update position history
+                                            if let Ok(Some(open_pos)) = pos_history_repo
+                                                .get_open_position(&signal.market_id, &signal.token_id)
+                                                .await
+                                            {
+                                                if let Some(pos_id) = open_pos.id {
+                                                    if let Err(e) = pos_history_repo
+                                                        .close_position(
+                                                            pos_id,
+                                                            executed_price,
+                                                            pnl_result.realized_pnl,
+                                                            fees,
+                                                        )
+                                                        .await
+                                                    {
+                                                        warn!(error = %e, "Failed to record position close");
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
