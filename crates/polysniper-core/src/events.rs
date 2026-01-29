@@ -1,4 +1,5 @@
-use crate::types::{Market, MarketId, Order, Orderbook, Position, TokenId, TradeSignal};
+use crate::gas::{GasCondition, GasPrice};
+use crate::types::{Market, MarketId, Orderbook, Position, TokenId, TradeSignal};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -33,8 +34,8 @@ pub enum SystemEvent {
     /// Heartbeat for health checks
     Heartbeat(HeartbeatEvent),
 
-    /// Config file changed
-    ConfigChanged(ConfigChangedEvent),
+    /// Gas price update
+    GasPriceUpdate(GasPriceUpdateEvent),
 }
 
 impl SystemEvent {
@@ -50,7 +51,7 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(_) => "trade_executed",
             SystemEvent::ConnectionStatus(_) => "connection_status",
             SystemEvent::Heartbeat(_) => "heartbeat",
-            SystemEvent::ConfigChanged(_) => "config_changed",
+            SystemEvent::GasPriceUpdate(_) => "gas_price_update",
         }
     }
 
@@ -66,7 +67,7 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(e) => e.timestamp,
             SystemEvent::ConnectionStatus(e) => e.timestamp,
             SystemEvent::Heartbeat(e) => e.timestamp,
-            SystemEvent::ConfigChanged(e) => e.timestamp,
+            SystemEvent::GasPriceUpdate(e) => e.timestamp,
         }
     }
 
@@ -82,38 +83,7 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(e) => Some(&e.market_id),
             SystemEvent::ConnectionStatus(_) => None,
             SystemEvent::Heartbeat(_) => None,
-            SystemEvent::ConfigChanged(_) => None,
-        }
-    }
-}
-
-/// Type of configuration that changed
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ConfigType {
-    /// Main application config (config/default.toml)
-    Main,
-    /// Strategy config (config/strategies/*.toml)
-    Strategy(String),
-}
-
-/// Config file changed event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConfigChangedEvent {
-    /// Path to the changed config file
-    pub path: std::path::PathBuf,
-    /// Type of config that changed
-    pub config_type: ConfigType,
-    /// When the change was detected
-    pub timestamp: DateTime<Utc>,
-}
-
-impl ConfigChangedEvent {
-    /// Create a new config changed event
-    pub fn new(path: std::path::PathBuf, config_type: ConfigType) -> Self {
-        Self {
-            path,
-            config_type,
-            timestamp: Utc::now(),
+            SystemEvent::GasPriceUpdate(_) => None,
         }
     }
 }
@@ -257,69 +227,50 @@ pub struct HeartbeatEvent {
     pub timestamp: DateTime<Utc>,
 }
 
-/// A single fill on an order
+/// Gas price update event
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Fill {
-    pub size: Decimal,
-    pub price: Decimal,
+pub struct GasPriceUpdateEvent {
+    /// Current gas price data
+    pub gas_price: GasPrice,
+    /// Previous gas price (if available)
+    pub previous_price: Option<GasPrice>,
+    /// Current gas condition classification
+    pub condition: GasCondition,
+    /// Previous condition (if changed)
+    pub previous_condition: Option<GasCondition>,
+    /// Whether this is a gas spike
+    pub is_spike: bool,
+    /// Rolling average of standard gas price (gwei)
+    pub average_gwei: Option<Decimal>,
+    /// Timestamp of this update
     pub timestamp: DateTime<Utc>,
 }
 
-/// Partial fill event - order partially executed
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PartialFillEvent {
-    pub order_id: String,
-    pub market_id: MarketId,
-    pub token_id: TokenId,
-    pub fill: Fill,
-    pub total_filled: Decimal,
-    pub remaining: Decimal,
-    pub timestamp: DateTime<Utc>,
-}
+impl GasPriceUpdateEvent {
+    /// Create a new gas price update event
+    pub fn new(
+        gas_price: GasPrice,
+        previous_price: Option<GasPrice>,
+        condition: GasCondition,
+        previous_condition: Option<GasCondition>,
+        is_spike: bool,
+        average_gwei: Option<Decimal>,
+    ) -> Self {
+        Self {
+            gas_price,
+            previous_price,
+            condition,
+            previous_condition,
+            is_spike,
+            average_gwei,
+            timestamp: Utc::now(),
+        }
+    }
 
-/// Full fill event - order completely executed
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FullFillEvent {
-    pub order_id: String,
-    pub market_id: MarketId,
-    pub token_id: TokenId,
-    pub avg_price: Decimal,
-    pub total_size: Decimal,
-    pub fill_count: usize,
-    pub timestamp: DateTime<Utc>,
-}
-
-/// Order expired event - order expired with unfilled portion
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OrderExpiredEvent {
-    pub order_id: String,
-    pub market_id: MarketId,
-    pub token_id: TokenId,
-    pub filled: Decimal,
-    pub unfilled: Decimal,
-    pub timestamp: DateTime<Utc>,
-}
-
-/// Resubmit triggered event - new order created for remaining size
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResubmitTriggeredEvent {
-    pub original_order_id: String,
-    pub new_order: Order,
-    pub market_id: MarketId,
-    pub remaining_size: Decimal,
-    pub resubmit_attempt: u32,
-    pub timestamp: DateTime<Utc>,
-}
-
-/// Order replaced event - cancel-and-replace operation completed
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OrderReplacedEvent {
-    pub original_order_id: String,
-    pub new_order_id: String,
-    pub market_id: MarketId,
-    pub old_price: Decimal,
-    pub new_price: Decimal,
-    pub preserved_fill: Decimal,
-    pub reason: String,
-    pub timestamp: DateTime<Utc>,
+    /// Check if the gas condition changed
+    pub fn condition_changed(&self) -> bool {
+        self.previous_condition
+            .map(|prev| prev != self.condition)
+            .unwrap_or(false)
+    }
 }

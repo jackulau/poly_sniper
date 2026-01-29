@@ -129,15 +129,26 @@ bot_token = ""
 chat_id = ""
 parse_mode = "HTML"
 
-# Emergency Control Server (kill switch)
-[control]
-# Whether the control server is enabled
+# Gas Price Tracking
+[gas]
+# Whether gas tracking is enabled
 enabled = true
-# Port for the HTTP control server
-port = 9876
-# Host address to bind to (use 0.0.0.0 for external access)
-host = "127.0.0.1"
-# Optional bearer token for authentication (set via CONTROL_AUTH_TOKEN env var recommended)
-# auth_token = "your-secret-token"
-# Enable Unix signal handlers (SIGUSR1=toggle halt, SIGUSR2=status, SIGTERM=shutdown)
-signal_handlers = true
+# Poll interval in seconds
+poll_interval_secs = 10
+# Primary RPC endpoint for eth_gasPrice
+rpc_endpoint = "https://polygon-rpc.com"
+# Fallback Polygonscan Gas Oracle API endpoint (optional)
+# fallback_endpoint = "https://api.polygonscan.com/api?module=gastracker&action=gasoracle"
+# Cache TTL in seconds
+cache_ttl_secs = 10
+# History duration in seconds (1 hour)
+history_duration_secs = 3600
+
+# Gas condition thresholds (in gwei)
+[gas.thresholds]
+# Below this is considered Low
+low = 30
+# Below this is considered Normal (above low)
+normal = 100
+# Below this is considered High (above normal) - above this is Extreme
+high = 300

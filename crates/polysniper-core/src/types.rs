@@ -564,7 +564,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub alerting: AlertingConfig,
     #[serde(default)]
-    pub control: ControlConfig,
+    pub gas: crate::gas::GasConfig,
 }
 
 impl Default for AppConfig {
@@ -577,7 +577,7 @@ impl Default for AppConfig {
             persistence: PersistenceConfig::default(),
             metrics: MetricsConfig::default(),
             alerting: AlertingConfig::default(),
-            control: ControlConfig::default(),
+            gas: crate::gas::GasConfig::default(),
         }
     }
 }

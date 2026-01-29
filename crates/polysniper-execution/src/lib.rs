@@ -2,14 +2,12 @@
 //!
 //! Order building and submission to CLOB.
 
-pub mod fill_manager;
-pub mod fill_poller;
+pub mod gas_tracker;
 pub mod order_builder;
 pub mod order_manager;
 pub mod submitter;
 
-pub use fill_manager::{FillManager, TrackedOrder, TrackedOrderStatus};
-pub use fill_poller::FillPoller;
+pub use gas_tracker::{GasHistoryStats, GasTracker};
 pub use order_builder::OrderBuilder;
 pub use order_manager::{
     ManagedOrder, ManagementPolicy, OrderManager, ReplaceAction, ReplaceDecision, ReplaceResult,
