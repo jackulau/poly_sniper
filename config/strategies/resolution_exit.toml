@@ -1,0 +1,51 @@
+# Resolution Exit Strategy Configuration
+#
+# Automatically exits positions before market resolution based on
+# configurable time thresholds and P&L rules.
+
+[strategy]
+# Whether the strategy is enabled
+enabled = true
+
+# Default time before resolution to exit (in seconds)
+# Default: 3600 (1 hour before resolution)
+default_exit_before_secs = 3600
+
+# Order type for exit orders
+# Options: "fok" (recommended), "gtc", "market"
+exit_order_type = "fok"
+
+# Maximum slippage tolerance for FOK orders (as decimal)
+# 0.02 = 2% slippage allowed
+max_slippage = 0.02
+
+# Whether to log all exit decisions
+log_exits = true
+
+# P&L floor in USD - exit early if unrealized P&L falls below this
+# Comment out to disable absolute USD floor
+# pnl_floor_usd = -50
+
+# P&L floor as percentage - exit if unrealized P&L % is below this
+# Comment out to disable percentage floor
+# pnl_floor_pct = -10
+
+# Markets explicitly flagged to hold through resolution
+# These markets will NOT auto-exit even when approaching resolution
+# Use with caution - you may lose your entire position if the outcome is wrong
+hold_through_markets = []
+
+# Per-market exit timing overrides
+# Each entry customizes exit behavior for a specific market
+
+# Example: Exit 2 hours before for high-risk markets
+# [[strategy.market_overrides]]
+# market_id = "0x123..."
+# exit_before_secs = 7200
+# order_type = "fok"
+# pnl_floor_usd = -25
+
+# Example: Quick exit for volatile markets
+# [[strategy.market_overrides]]
+# market_id = "0x456..."
+# exit_before_secs = 1800  # 30 minutes
