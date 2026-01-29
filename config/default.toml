@@ -31,6 +31,48 @@ max_retries = 3
 # Delay between retries in milliseconds
 retry_delay_ms = 100
 
+# Execution Algorithms (TWAP/VWAP) for large order execution
+[execution.algorithms]
+# Default algorithm for large orders: "twap" or "vwap"
+default_algorithm = "twap"
+# Minimum order size (USD) to trigger algorithmic execution
+min_size_for_algo = 100
+
+# TWAP (Time-Weighted Average Price) Configuration
+[execution.algorithms.twap]
+# Total execution window in seconds
+total_duration_secs = 300
+# Number of child order slices
+num_slices = 10
+# Add random jitter to timing to avoid pattern detection
+randomize_timing = true
+# Timing jitter as percentage (0.0-1.0)
+timing_jitter_pct = 0.2
+# Vary child order sizes randomly
+randomize_size = true
+# Size variation as percentage (0.0-1.0)
+size_jitter_pct = 0.1
+# Maximum participation rate (fraction of interval volume)
+max_participation_rate = 0.1
+
+# VWAP (Volume-Weighted Average Price) Configuration
+[execution.algorithms.vwap]
+# Total execution window in seconds
+total_duration_secs = 300
+# Number of child order slices
+num_slices = 10
+# Volume profile: "uniform", "front_loaded", "back_loaded", "u_shaped"
+# For custom profiles, use separate config file
+volume_profile = "uniform"
+# Maximum participation rate
+max_participation_rate = 0.1
+# Adapt execution based on real-time observed volume
+adaptive = false
+# Add random jitter to timing
+randomize_timing = true
+# Timing jitter as percentage (0.0-1.0)
+timing_jitter_pct = 0.15
+
 # Phase 5: SQLite Persistence
 [persistence]
 # Whether persistence is enabled

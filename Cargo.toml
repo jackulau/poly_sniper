@@ -77,6 +77,9 @@ ureq = { version = "2.9", features = ["json"] }
 # UUID generation
 uuid = { version = "1.8", features = ["v4"] }
 
+# Random number generation
+rand = "0.8"
+
 [package]
 name = "polysniper"
 version.workspace = true
