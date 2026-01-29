@@ -74,3 +74,27 @@ enabled = false
 bot_token = ""
 chat_id = ""
 parse_mode = "HTML"
+
+# Gas Price Tracking
+[gas]
+# Whether gas tracking is enabled
+enabled = true
+# Poll interval in seconds
+poll_interval_secs = 10
+# Primary RPC endpoint for eth_gasPrice
+rpc_endpoint = "https://polygon-rpc.com"
+# Fallback Polygonscan Gas Oracle API endpoint (optional)
+# fallback_endpoint = "https://api.polygonscan.com/api?module=gastracker&action=gasoracle"
+# Cache TTL in seconds
+cache_ttl_secs = 10
+# History duration in seconds (1 hour)
+history_duration_secs = 3600
+
+# Gas condition thresholds (in gwei)
+[gas.thresholds]
+# Below this is considered Low
+low = 30
+# Below this is considered Normal (above low)
+normal = 100
+# Below this is considered High (above normal) - above this is Extreme
+high = 300

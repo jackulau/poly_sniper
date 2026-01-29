@@ -1,3 +1,4 @@
+use crate::gas::{GasCondition, GasPrice};
 use crate::types::{Market, MarketId, Orderbook, Position, TokenId, TradeSignal};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
@@ -32,6 +33,9 @@ pub enum SystemEvent {
 
     /// Heartbeat for health checks
     Heartbeat(HeartbeatEvent),
+
+    /// Gas price update
+    GasPriceUpdate(GasPriceUpdateEvent),
 }
 
 impl SystemEvent {
@@ -47,6 +51,7 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(_) => "trade_executed",
             SystemEvent::ConnectionStatus(_) => "connection_status",
             SystemEvent::Heartbeat(_) => "heartbeat",
+            SystemEvent::GasPriceUpdate(_) => "gas_price_update",
         }
     }
 
@@ -62,6 +67,7 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(e) => e.timestamp,
             SystemEvent::ConnectionStatus(e) => e.timestamp,
             SystemEvent::Heartbeat(e) => e.timestamp,
+            SystemEvent::GasPriceUpdate(e) => e.timestamp,
         }
     }
 
@@ -77,6 +83,7 @@ impl SystemEvent {
             SystemEvent::TradeExecuted(e) => Some(&e.market_id),
             SystemEvent::ConnectionStatus(_) => None,
             SystemEvent::Heartbeat(_) => None,
+            SystemEvent::GasPriceUpdate(_) => None,
         }
     }
 }
@@ -218,4 +225,52 @@ pub enum ConnectionState {
 pub struct HeartbeatEvent {
     pub source: String,
     pub timestamp: DateTime<Utc>,
+}
+
+/// Gas price update event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GasPriceUpdateEvent {
+    /// Current gas price data
+    pub gas_price: GasPrice,
+    /// Previous gas price (if available)
+    pub previous_price: Option<GasPrice>,
+    /// Current gas condition classification
+    pub condition: GasCondition,
+    /// Previous condition (if changed)
+    pub previous_condition: Option<GasCondition>,
+    /// Whether this is a gas spike
+    pub is_spike: bool,
+    /// Rolling average of standard gas price (gwei)
+    pub average_gwei: Option<Decimal>,
+    /// Timestamp of this update
+    pub timestamp: DateTime<Utc>,
+}
+
+impl GasPriceUpdateEvent {
+    /// Create a new gas price update event
+    pub fn new(
+        gas_price: GasPrice,
+        previous_price: Option<GasPrice>,
+        condition: GasCondition,
+        previous_condition: Option<GasCondition>,
+        is_spike: bool,
+        average_gwei: Option<Decimal>,
+    ) -> Self {
+        Self {
+            gas_price,
+            previous_price,
+            condition,
+            previous_condition,
+            is_spike,
+            average_gwei,
+            timestamp: Utc::now(),
+        }
+    }
+
+    /// Check if the gas condition changed
+    pub fn condition_changed(&self) -> bool {
+        self.previous_condition
+            .map(|prev| prev != self.condition)
+            .unwrap_or(false)
+    }
 }
