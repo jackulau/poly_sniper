@@ -2,7 +2,11 @@
 //!
 //! A Rust-based trading bot for Polymarket with multiple sniping strategies.
 
+mod commands;
+
 use anyhow::{Context, Result};
+use clap::{Parser, Subcommand};
+use commands::StatsCommand;
 use polysniper_core::{
     AppConfig, EventBus, OrderExecutor, RiskDecision, RiskValidator, StateManager, StateProvider,
     Strategy, SystemEvent, TradeSignal,
@@ -27,6 +31,23 @@ use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 use tokio::time::interval;
 use tracing::{error, info, warn, Level};
+
+/// Polysniper - High-Performance Polymarket Trading Bot
+#[derive(Parser)]
+#[command(name = "polysniper")]
+#[command(about = "A high-performance trading bot for Polymarket", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Run the trading bot (default)
+    Run,
+    /// View statistics and performance metrics
+    Stats(StatsCommand),
+}
 
 /// Configuration file paths
 const DEFAULT_CONFIG_PATH: &str = "config/default.toml";
@@ -653,28 +674,38 @@ async fn poll_gamma_markets(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
-    let log_format = std::env::var("LOG_FORMAT")
-        .map(|f| match f.as_str() {
-            "json" => LogFormat::Json,
-            "compact" => LogFormat::Compact,
-            _ => LogFormat::Pretty,
-        })
-        .unwrap_or(LogFormat::Pretty);
+    let cli = Cli::parse();
 
-    let log_level = std::env::var("LOG_LEVEL")
-        .map(|l| match l.to_uppercase().as_str() {
-            "DEBUG" => Level::DEBUG,
-            "TRACE" => Level::TRACE,
-            "WARN" => Level::WARN,
-            "ERROR" => Level::ERROR,
-            _ => Level::INFO,
-        })
-        .unwrap_or(Level::INFO);
+    match cli.command {
+        Some(Commands::Stats(stats_cmd)) => {
+            // Stats command doesn't need full logging setup
+            stats_cmd.run().await
+        }
+        Some(Commands::Run) | None => {
+            // Initialize logging for the trading bot
+            let log_format = std::env::var("LOG_FORMAT")
+                .map(|f| match f.as_str() {
+                    "json" => LogFormat::Json,
+                    "compact" => LogFormat::Compact,
+                    _ => LogFormat::Pretty,
+                })
+                .unwrap_or(LogFormat::Pretty);
 
-    init_logging(log_format, log_level);
+            let log_level = std::env::var("LOG_LEVEL")
+                .map(|l| match l.to_uppercase().as_str() {
+                    "DEBUG" => Level::DEBUG,
+                    "TRACE" => Level::TRACE,
+                    "WARN" => Level::WARN,
+                    "ERROR" => Level::ERROR,
+                    _ => Level::INFO,
+                })
+                .unwrap_or(Level::INFO);
 
-    // Run application
-    let mut app = App::new().await?;
-    app.run().await
+            init_logging(log_format, log_level);
+
+            // Run application
+            let mut app = App::new().await?;
+            app.run().await
+        }
+    }
 }
