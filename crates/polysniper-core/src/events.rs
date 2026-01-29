@@ -44,6 +44,9 @@ pub enum SystemEvent {
 
     /// Order resubmit triggered
     ResubmitTriggered(ResubmitTriggeredEvent),
+
+    /// Order replaced (cancel-and-replace)
+    OrderReplaced(OrderReplacedEvent),
 }
 
 impl SystemEvent {
@@ -63,6 +66,7 @@ impl SystemEvent {
             SystemEvent::FullFill(_) => "full_fill",
             SystemEvent::OrderExpired(_) => "order_expired",
             SystemEvent::ResubmitTriggered(_) => "resubmit_triggered",
+            SystemEvent::OrderReplaced(_) => "order_replaced",
         }
     }
 
@@ -82,6 +86,7 @@ impl SystemEvent {
             SystemEvent::FullFill(e) => e.timestamp,
             SystemEvent::OrderExpired(e) => e.timestamp,
             SystemEvent::ResubmitTriggered(e) => e.timestamp,
+            SystemEvent::OrderReplaced(e) => e.timestamp,
         }
     }
 
@@ -101,6 +106,7 @@ impl SystemEvent {
             SystemEvent::FullFill(e) => Some(&e.market_id),
             SystemEvent::OrderExpired(e) => Some(&e.market_id),
             SystemEvent::ResubmitTriggered(e) => Some(&e.market_id),
+            SystemEvent::OrderReplaced(e) => Some(&e.market_id),
         }
     }
 }
@@ -295,5 +301,18 @@ pub struct ResubmitTriggeredEvent {
     pub market_id: MarketId,
     pub remaining_size: Decimal,
     pub resubmit_attempt: u32,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Order replaced event - cancel-and-replace operation completed
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderReplacedEvent {
+    pub original_order_id: String,
+    pub new_order_id: String,
+    pub market_id: MarketId,
+    pub old_price: Decimal,
+    pub new_price: Decimal,
+    pub preserved_fill: Decimal,
+    pub reason: String,
     pub timestamp: DateTime<Utc>,
 }
