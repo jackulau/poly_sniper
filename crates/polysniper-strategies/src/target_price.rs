@@ -96,12 +96,10 @@ impl TargetPriceStrategy {
         }
 
         // Initialize synchronously by creating a new RwLock
-        let strategy = Self {
+        Self {
             targets: Arc::new(RwLock::new(targets_map)),
             ..strategy
-        };
-
-        strategy
+        }
     }
 
     /// Add a price target

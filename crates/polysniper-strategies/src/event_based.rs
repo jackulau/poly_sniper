@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use polysniper_core::{
-    ExternalSignalEvent, MarketId, OrderType, Outcome, Priority, Side, SignalSource,
+    ExternalSignalEvent, MarketId, MlConfig, OrderType, Outcome, Priority, Side, SignalSource,
     StateProvider, Strategy, StrategyError, SystemEvent, TradeSignal,
 };
 use rust_decimal::Decimal;
@@ -16,6 +16,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
+
+use crate::ml_processor::MlSignalProcessor;
 
 /// Event-based strategy configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,6 +30,9 @@ pub struct EventBasedConfig {
     /// Market search keywords to market ID mapping
     #[serde(default)]
     pub market_mappings: HashMap<String, MarketMapping>,
+    /// ML signal processing configuration
+    #[serde(default)]
+    pub ml_config: MlConfig,
 }
 
 /// Rule for processing external signals
@@ -98,6 +103,7 @@ impl Default for EventBasedConfig {
             rules: Vec::new(),
             default_order_size_usd: dec!(100),
             market_mappings: HashMap::new(),
+            ml_config: MlConfig::default(),
         }
     }
 }
@@ -110,12 +116,15 @@ pub struct EventBasedStrategy {
     config: EventBasedConfig,
     /// Cache of matched signals to prevent duplicates
     processed_signals: Arc<RwLock<lru::LruCache<String, ()>>>,
+    /// ML signal processor
+    ml_processor: MlSignalProcessor,
 }
 
 impl EventBasedStrategy {
     /// Create a new event-based strategy
     pub fn new(config: EventBasedConfig) -> Self {
         let enabled = config.enabled;
+        let ml_processor = MlSignalProcessor::new(config.ml_config.clone());
         Self {
             id: "event_based".to_string(),
             name: "Event-Based Strategy".to_string(),
@@ -124,7 +133,167 @@ impl EventBasedStrategy {
             processed_signals: Arc::new(RwLock::new(lru::LruCache::new(
                 std::num::NonZeroUsize::new(1000).unwrap(),
             ))),
+            ml_processor,
         }
+    }
+
+    /// Get reference to the ML processor
+    pub fn ml_processor(&self) -> &MlSignalProcessor {
+        &self.ml_processor
+    }
+
+    /// Process ML signal and generate trade signal if applicable
+    async fn process_ml_signal(
+        &self,
+        external_signal: &ExternalSignalEvent,
+        state: &dyn StateProvider,
+    ) -> Result<Option<TradeSignal>, StrategyError> {
+        // Try to process as ML signal
+        let ml_result = match self.ml_processor.process_signal(external_signal).await {
+            Some(result) => result,
+            None => return Ok(None), // Not an ML signal
+        };
+
+        if !ml_result.should_execute {
+            debug!(
+                reason = ?ml_result.rejection_reason,
+                "ML signal rejected"
+            );
+            return Ok(None);
+        }
+
+        // Get market from prediction
+        let prediction = &ml_result.prediction;
+        let market_id = match &prediction.market_id {
+            Some(id) => id.clone(),
+            None => {
+                // Try to find market by keywords
+                for market in state.get_all_markets().await {
+                    let question_lower = market.question.to_lowercase();
+                    if prediction
+                        .market_keywords
+                        .iter()
+                        .any(|kw| question_lower.contains(&kw.to_lowercase()))
+                    {
+                        return self
+                            .create_ml_trade_signal(
+                                &market.condition_id,
+                                &market.yes_token_id,
+                                &market.no_token_id,
+                                &ml_result,
+                                state,
+                            )
+                            .await;
+                    }
+                }
+                warn!(
+                    prediction_id = %prediction.id,
+                    "Could not find market for ML prediction"
+                );
+                return Ok(None);
+            }
+        };
+
+        // Get market details
+        let market = match state.get_market(&market_id).await {
+            Some(m) => m,
+            None => {
+                warn!(
+                    market_id = %market_id,
+                    "Market not found for ML prediction"
+                );
+                return Ok(None);
+            }
+        };
+
+        self.create_ml_trade_signal(
+            &market.condition_id,
+            &market.yes_token_id,
+            &market.no_token_id,
+            &ml_result,
+            state,
+        )
+        .await
+    }
+
+    /// Create a trade signal from ML processing result
+    async fn create_ml_trade_signal(
+        &self,
+        market_id: &MarketId,
+        yes_token_id: &str,
+        no_token_id: &str,
+        ml_result: &crate::ml_processor::MlProcessingResult,
+        state: &dyn StateProvider,
+    ) -> Result<Option<TradeSignal>, StrategyError> {
+        let prediction = &ml_result.prediction;
+        let outcome = ml_result.suggested_outcome;
+
+        let token_id = match outcome {
+            Outcome::Yes => yes_token_id.to_string(),
+            Outcome::No => no_token_id.to_string(),
+        };
+
+        // Get current price
+        let current_price = state.get_price(&token_id).await;
+        let entry_price = current_price.unwrap_or(dec!(0.50));
+
+        // Calculate order size with ML confidence multiplier
+        let base_size_usd = self.config.default_order_size_usd;
+        let adjusted_size_usd = base_size_usd * ml_result.size_multiplier;
+
+        let size = if entry_price.is_zero() {
+            Decimal::ZERO
+        } else {
+            adjusted_size_usd / entry_price
+        };
+
+        let signal = TradeSignal {
+            id: format!(
+                "sig_ml_{}_{}_{}_{}",
+                prediction.model_id,
+                market_id,
+                Utc::now().timestamp_millis(),
+                rand_suffix()
+            ),
+            strategy_id: self.id.clone(),
+            market_id: market_id.clone(),
+            token_id,
+            outcome,
+            side: Side::Buy,
+            price: Some(entry_price),
+            size,
+            size_usd: adjusted_size_usd,
+            order_type: OrderType::Fok,
+            priority: Priority::High,
+            timestamp: Utc::now(),
+            reason: format!(
+                "ML prediction from model '{}' with {:.1}% confidence",
+                prediction.model_id,
+                prediction.confidence * dec!(100)
+            ),
+            metadata: serde_json::json!({
+                "ml_signal": true,
+                "model_id": prediction.model_id,
+                "model_version": prediction.model_version,
+                "prediction_id": prediction.id,
+                "confidence": prediction.confidence.to_string(),
+                "size_multiplier": ml_result.size_multiplier.to_string(),
+                "base_size_usd": base_size_usd.to_string(),
+                "adjusted_size_usd": adjusted_size_usd.to_string(),
+            }),
+        };
+
+        info!(
+            signal_id = %signal.id,
+            model_id = %prediction.model_id,
+            confidence = %prediction.confidence,
+            size_multiplier = %ml_result.size_multiplier,
+            outcome = ?outcome,
+            size_usd = %adjusted_size_usd,
+            "Generated ML trade signal"
+        );
+
+        Ok(Some(signal))
     }
 
     /// Generate a signal hash for deduplication
@@ -295,7 +464,17 @@ impl Strategy for EventBasedStrategy {
             processed.put(signal_hash.clone(), ());
         }
 
-        // Find matching rule
+        // First, try to process as ML signal
+        if self.ml_processor.is_ml_signal(external_signal) {
+            if let Some(ml_signal) = self.process_ml_signal(external_signal, state).await? {
+                signals.push(ml_signal);
+                return Ok(signals);
+            }
+            // If ML processing returned None but it was an ML signal, don't continue to rule matching
+            return Ok(signals);
+        }
+
+        // Find matching rule (for non-ML signals)
         let rule = match self.find_matching_rule(external_signal) {
             Some(r) => r,
             None => {
