@@ -344,6 +344,70 @@ impl Default for TimeRulesConfig {
     }
 }
 
+/// Manual correlation group configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrelationGroupConfig {
+    /// Group name/identifier
+    pub name: String,
+    /// Market IDs or slug patterns in this group
+    pub markets: Vec<String>,
+}
+
+/// Correlation-aware position limit configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrelationConfig {
+    /// Whether correlation-aware limits are enabled
+    pub enabled: bool,
+    /// Minimum correlation threshold to group markets (e.g., 0.7)
+    pub correlation_threshold: Decimal,
+    /// Time window in seconds for correlation calculation
+    pub window_secs: u64,
+    /// Maximum total exposure across correlated markets in USD
+    pub max_correlated_exposure_usd: Decimal,
+    /// Manual correlation groups (market slugs)
+    #[serde(default)]
+    pub groups: Vec<CorrelationGroupConfig>,
+}
+
+impl Default for CorrelationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            correlation_threshold: Decimal::new(7, 1), // 0.7
+            window_secs: 3600,                         // 1 hour
+            max_correlated_exposure_usd: Decimal::new(3000, 0),
+            groups: Vec::new(),
+        }
+    }
+}
+
+/// Control server configuration for emergency kill switch
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ControlConfig {
+    /// Whether the control server is enabled
+    pub enabled: bool,
+    /// Port for the HTTP control server
+    pub port: u16,
+    /// Host address to bind to
+    pub host: String,
+    /// Optional bearer token for authentication
+    pub auth_token: Option<String>,
+    /// Enable Unix signal handlers (SIGUSR1/SIGUSR2)
+    pub signal_handlers: bool,
+}
+
+impl Default for ControlConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            port: 9876,
+            host: "127.0.0.1".to_string(),
+            auth_token: None,
+            signal_handlers: true,
+        }
+    }
+}
+
 /// Risk configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskConfig {
@@ -358,6 +422,9 @@ pub struct RiskConfig {
     /// Time-based risk rules config
     #[serde(default)]
     pub time_rules: TimeRulesConfig,
+    /// Correlation-aware position limit configuration
+    #[serde(default)]
+    pub correlation: CorrelationConfig,
 }
 
 impl Default for RiskConfig {
@@ -370,6 +437,7 @@ impl Default for RiskConfig {
             max_orders_per_minute: 60,
             volatility: VolatilityConfig::default(),
             time_rules: TimeRulesConfig::default(),
+            correlation: CorrelationConfig::default(),
         }
     }
 }
@@ -650,4 +718,278 @@ pub struct AppConfig {
     pub alerting: AlertingConfig,
     #[serde(default)]
     pub resolution: ResolutionConfig,
+    #[serde(default)]
+    pub control: ControlConfig,
+    #[serde(default)]
+    pub discord: DiscordConfig,
+    #[serde(default)]
+    pub gas: crate::GasConfig,
+    #[serde(default)]
+    pub webhook: WebhookConfig,
+}
+
+/// Adaptive order sizing configuration based on orderbook depth
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdaptiveSizingConfig {
+    /// Whether adaptive sizing is enabled
+    pub enabled: bool,
+    /// Maximum market impact in basis points
+    pub max_market_impact_bps: Decimal,
+    /// Minimum ratio of order size to available liquidity
+    pub min_liquidity_ratio: Decimal,
+    /// Factor to reduce size when liquidity is low (0.0 - 1.0)
+    pub size_reduction_factor: Decimal,
+}
+
+impl Default for AdaptiveSizingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_market_impact_bps: Decimal::new(50, 0), // 50 bps
+            min_liquidity_ratio: Decimal::new(1, 1),    // 0.1 (10%)
+            size_reduction_factor: Decimal::new(5, 1),  // 0.5
+        }
+    }
+}
+
+/// Order type for exit orders
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExitOrderType {
+    /// Fill-or-kill market order
+    Fok,
+    /// Good-til-cancelled limit order
+    Gtc,
+    /// Market order (executed as FOK)
+    Market,
+}
+
+impl Default for ExitOrderType {
+    fn default() -> Self {
+        ExitOrderType::Fok
+    }
+}
+
+/// Type of P&L floor for exit decisions
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PnlFloorType {
+    /// Absolute USD value floor
+    Absolute,
+    /// Percentage of position value floor
+    Percentage,
+}
+
+/// Reason for exiting a position
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExitReason {
+    /// Time threshold before resolution
+    TimeThreshold {
+        time_remaining_secs: i64,
+        threshold_secs: u64,
+    },
+    /// P&L floor breached
+    PnlFloor {
+        unrealized_pnl: Decimal,
+        floor: Decimal,
+        floor_type: PnlFloorType,
+    },
+    /// Market is resolving or closed
+    MarketResolved,
+    /// Manual exit request
+    Manual,
+}
+
+impl std::fmt::Display for ExitReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExitReason::TimeThreshold {
+                time_remaining_secs,
+                threshold_secs,
+            } => write!(
+                f,
+                "Time threshold ({}s remaining, threshold {}s)",
+                time_remaining_secs, threshold_secs
+            ),
+            ExitReason::PnlFloor {
+                unrealized_pnl,
+                floor,
+                floor_type,
+            } => write!(
+                f,
+                "P&L floor ({:?}: {} vs {})",
+                floor_type, unrealized_pnl, floor
+            ),
+            ExitReason::MarketResolved => write!(f, "Market resolved"),
+            ExitReason::Manual => write!(f, "Manual exit"),
+        }
+    }
+}
+
+/// Market-specific override configuration for resolution exit
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketExitOverride {
+    /// Market condition ID
+    pub market_id: MarketId,
+    /// Override exit time threshold (in seconds before resolution)
+    pub exit_before_secs: Option<u64>,
+    /// Override order type for this market
+    pub order_type: Option<ExitOrderType>,
+    /// Override P&L floor for this market
+    pub pnl_floor_usd: Option<Decimal>,
+}
+
+/// Configuration for resolution-based exit strategy
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolutionExitConfig {
+    /// Whether the strategy is enabled
+    pub enabled: bool,
+    /// Default time before resolution to exit (in seconds)
+    pub default_exit_before_secs: u64,
+    /// Default order type for exits
+    pub exit_order_type: ExitOrderType,
+    /// Maximum slippage allowed for FOK orders
+    pub max_slippage: Decimal,
+    /// Absolute P&L floor in USD (exit if unrealized PnL below this)
+    pub pnl_floor_usd: Option<Decimal>,
+    /// Percentage P&L floor (exit if unrealized PnL % below this)
+    pub pnl_floor_pct: Option<Decimal>,
+    /// Markets to hold through resolution (no auto-exit)
+    #[serde(default)]
+    pub hold_through_markets: Vec<String>,
+    /// Market-specific override configurations
+    #[serde(default)]
+    pub market_overrides: Vec<MarketExitOverride>,
+    /// Whether to log exit decisions
+    pub log_exits: bool,
+}
+
+impl Default for ResolutionExitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            default_exit_before_secs: 3600, // 1 hour
+            exit_order_type: ExitOrderType::default(),
+            max_slippage: Decimal::new(2, 2), // 0.02 (2%)
+            pnl_floor_usd: Some(Decimal::new(-100, 0)), // -$100
+            pnl_floor_pct: None,
+            hold_through_markets: Vec::new(),
+            market_overrides: Vec::new(),
+            log_exits: true,
+        }
+    }
+}
+
+impl ResolutionExitConfig {
+    /// Check if a market should be held through resolution
+    pub fn should_hold_through(&self, market_id: &str) -> bool {
+        self.hold_through_markets
+            .iter()
+            .any(|m| m == market_id || market_id.contains(m))
+    }
+
+    /// Get the exit threshold for a market (in seconds before resolution)
+    pub fn get_exit_before_secs(&self, market_id: &str) -> u64 {
+        if let Some(override_config) = self.market_overrides.iter().find(|o| o.market_id == market_id) {
+            if let Some(secs) = override_config.exit_before_secs {
+                return secs;
+            }
+        }
+        self.default_exit_before_secs
+    }
+
+    /// Check if should exit based on time remaining
+    pub fn should_exit_on_time(&self, market_id: &str, time_remaining_secs: i64) -> bool {
+        let threshold = self.get_exit_before_secs(market_id) as i64;
+        time_remaining_secs <= threshold && time_remaining_secs > 0
+    }
+}
+
+/// Tracked position for resolution exit monitoring
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackedPosition {
+    /// Market condition ID
+    pub market_id: MarketId,
+    /// Token ID being held
+    pub token_id: TokenId,
+    /// Position size in contracts
+    pub size: Decimal,
+    /// Average entry price
+    pub avg_price: Decimal,
+    /// Current unrealized P&L
+    pub unrealized_pnl: Decimal,
+    /// Market end date (resolution time)
+    pub end_date: Option<chrono::DateTime<chrono::Utc>>,
+    /// Whether an exit signal has been generated
+    pub exit_signal_generated: bool,
+    /// Reason for exit (if exit signal generated)
+    pub exit_reason: Option<ExitReason>,
+    /// Whether to hold through resolution
+    pub hold_through: bool,
+}
+
+impl TrackedPosition {
+    /// Calculate time remaining until resolution
+    pub fn time_remaining(&self) -> Option<chrono::Duration> {
+        self.end_date.map(|end| end - chrono::Utc::now())
+    }
+
+    /// Get time remaining in seconds
+    pub fn time_remaining_secs(&self) -> Option<i64> {
+        self.time_remaining().map(|d| d.num_seconds())
+    }
+
+    /// Calculate current position value
+    pub fn position_value(&self) -> Decimal {
+        self.size * self.avg_price
+    }
+}
+
+/// Policy configuration for order management
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManagementPolicyConfig {
+    /// Price drift threshold in basis points before replacing
+    pub price_drift_threshold_bps: Decimal,
+    /// Minimum interval between replacements in milliseconds
+    pub min_replace_interval_ms: u64,
+    /// Maximum number of replacements per order
+    pub max_replacements: u32,
+    /// Whether to chase prices when they move
+    pub chase_enabled: bool,
+    /// Aggression factor for chasing (0.0-1.0)
+    pub chase_aggression: f64,
+}
+
+impl Default for ManagementPolicyConfig {
+    fn default() -> Self {
+        Self {
+            price_drift_threshold_bps: Decimal::new(50, 0), // 50 bps
+            min_replace_interval_ms: 1000,
+            max_replacements: 5,
+            chase_enabled: true,
+            chase_aggression: 0.5,
+        }
+    }
+}
+
+/// Configuration for automatic order management
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderManagementConfig {
+    /// Whether order management is enabled
+    pub enabled: bool,
+    /// How often to check orders for price drift (in milliseconds)
+    pub check_interval_ms: u64,
+    /// Default policy for order management
+    #[serde(default)]
+    pub default_policy: ManagementPolicyConfig,
+}
+
+impl Default for OrderManagementConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            check_interval_ms: 1000,
+            default_policy: ManagementPolicyConfig::default(),
+        }
+    }
 }

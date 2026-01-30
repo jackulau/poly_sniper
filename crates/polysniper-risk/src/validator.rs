@@ -1,6 +1,8 @@
 //! Risk validation implementation
 
 use crate::correlation::CorrelationTracker;
+use crate::time_rules::{TimeRuleEngine, TimeRuleResult};
+use crate::volatility::VolatilityCalculator;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use polysniper_core::{
@@ -12,8 +14,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
-
-use crate::volatility::VolatilityCalculator;
 
 /// Order tracking for rate limiting
 #[derive(Debug, Clone)]
@@ -32,18 +32,27 @@ pub struct RiskManager {
     recent_orders: Arc<RwLock<VecDeque<OrderRecord>>>,
     /// Volatility calculator for position sizing
     volatility_calculator: VolatilityCalculator,
+    /// Time-based rule engine
+    time_rule_engine: TimeRuleEngine,
+    /// Correlation tracker for correlated position limits
+    #[allow(dead_code)]
+    correlation_tracker: CorrelationTracker,
 }
 
 impl RiskManager {
     /// Create a new risk manager
     pub fn new(config: RiskConfig) -> Self {
         let volatility_calculator = VolatilityCalculator::new(config.volatility.clone());
+        let time_rule_engine = TimeRuleEngine::new(config.time_rules.clone());
+        let correlation_tracker = CorrelationTracker::new(config.correlation.clone());
         Self {
             config: Arc::new(RwLock::new(config)),
             halted: Arc::new(AtomicBool::new(false)),
             halt_reason: Arc::new(RwLock::new(None)),
             recent_orders: Arc::new(RwLock::new(VecDeque::new())),
             volatility_calculator,
+            time_rule_engine,
+            correlation_tracker,
         }
     }
 
@@ -368,6 +377,15 @@ impl RiskValidator for RiskManager {
         signal: &TradeSignal,
         state: &dyn StateProvider,
     ) -> Result<RiskDecision, RiskError> {
+        // Extract config values
+        let config = self.config.read().await;
+        let max_orders_per_minute = config.max_orders_per_minute;
+        let max_order_size_usd = config.max_order_size_usd;
+        let max_position_size_usd = config.max_position_size_usd;
+        let daily_loss_limit_usd = config.daily_loss_limit_usd;
+        let circuit_breaker_loss_usd = config.circuit_breaker_loss_usd;
+        drop(config);
+
         // Check if halted
         if self.is_halted() {
             let reason = self
@@ -391,9 +409,9 @@ impl RiskValidator for RiskManager {
                     let new_size_usd = *new_size * price;
 
                     // Check if modified size passes other limits
-                    if new_size_usd > self.config.max_order_size_usd {
+                    if new_size_usd > max_order_size_usd {
                         // Still too large, adjust further
-                        let final_size = self.config.max_order_size_usd / price;
+                        let final_size = max_order_size_usd / price;
                         return Ok(RiskDecision::Modified {
                             new_size: final_size,
                             reason: format!(
@@ -421,7 +439,7 @@ impl RiskValidator for RiskManager {
         if let Err(e) = self.check_order_size(signal, max_order_size_usd) {
             // Try to adjust size
             if let Some(new_size) =
-                self.calculate_adjusted_size(signal, self.config.max_order_size_usd)
+                self.calculate_adjusted_size(signal, max_order_size_usd)
             {
                 warn!(
                     signal_id = %signal.id,

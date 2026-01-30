@@ -23,3 +23,7 @@ urlencoding = "2.1"
 # Feed ingestion dependencies
 feed-rs = "2.0"
 sha2 = "0.10"
+
+# Webhook server dependencies
+axum.workspace = true
+uuid.workspace = true

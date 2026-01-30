@@ -42,6 +42,24 @@ pub enum SystemEvent {
 
     /// Config file changed
     ConfigChanged(ConfigChangedEvent),
+
+    /// Full order fill
+    FullFill(FullFillEvent),
+
+    /// Partial order fill
+    PartialFill(PartialFillEvent),
+
+    /// Order expired
+    OrderExpired(OrderExpiredEvent),
+
+    /// Order resubmit triggered
+    ResubmitTriggered(ResubmitTriggeredEvent),
+
+    /// Gas price update
+    GasPriceUpdate(GasPriceUpdateEvent),
+
+    /// Order replaced
+    OrderReplaced(OrderReplacedEvent),
 }
 
 impl SystemEvent {
@@ -60,6 +78,12 @@ impl SystemEvent {
             SystemEvent::Heartbeat(_) => "heartbeat",
             SystemEvent::FeedItemReceived(_) => "feed_item_received",
             SystemEvent::ConfigChanged(_) => "config_changed",
+            SystemEvent::FullFill(_) => "full_fill",
+            SystemEvent::PartialFill(_) => "partial_fill",
+            SystemEvent::OrderExpired(_) => "order_expired",
+            SystemEvent::ResubmitTriggered(_) => "resubmit_triggered",
+            SystemEvent::GasPriceUpdate(_) => "gas_price_update",
+            SystemEvent::OrderReplaced(_) => "order_replaced",
         }
     }
 
@@ -78,6 +102,12 @@ impl SystemEvent {
             SystemEvent::Heartbeat(e) => e.timestamp,
             SystemEvent::FeedItemReceived(e) => e.received_at,
             SystemEvent::ConfigChanged(e) => e.timestamp,
+            SystemEvent::FullFill(e) => e.timestamp,
+            SystemEvent::PartialFill(e) => e.timestamp,
+            SystemEvent::OrderExpired(e) => e.timestamp,
+            SystemEvent::ResubmitTriggered(e) => e.timestamp,
+            SystemEvent::GasPriceUpdate(e) => e.timestamp,
+            SystemEvent::OrderReplaced(e) => e.timestamp,
         }
     }
 
@@ -96,6 +126,12 @@ impl SystemEvent {
             SystemEvent::Heartbeat(_) => None,
             SystemEvent::FeedItemReceived(_) => None,
             SystemEvent::ConfigChanged(_) => None,
+            SystemEvent::FullFill(e) => Some(&e.market_id),
+            SystemEvent::PartialFill(e) => Some(&e.market_id),
+            SystemEvent::OrderExpired(e) => Some(&e.market_id),
+            SystemEvent::ResubmitTriggered(e) => Some(&e.market_id),
+            SystemEvent::GasPriceUpdate(_) => None,
+            SystemEvent::OrderReplaced(e) => Some(&e.market_id),
         }
     }
 }
@@ -341,4 +377,154 @@ impl ConfigChangedEvent {
             timestamp: Utc::now(),
         }
     }
+}
+
+/// Fill information for an order
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Fill {
+    /// Fill size
+    pub size: Decimal,
+    /// Fill price
+    pub price: Decimal,
+    /// When the fill occurred
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Full order fill event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FullFillEvent {
+    /// Order ID that was fully filled
+    pub order_id: String,
+    /// Market ID
+    pub market_id: MarketId,
+    /// Token ID
+    pub token_id: TokenId,
+    /// Volume-weighted average price across all fills
+    pub avg_price: Decimal,
+    /// Total size filled
+    pub total_size: Decimal,
+    /// Number of individual fills
+    pub fill_count: usize,
+    /// When the fill was detected
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Partial order fill event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PartialFillEvent {
+    /// Order ID that was partially filled
+    pub order_id: String,
+    /// Market ID
+    pub market_id: MarketId,
+    /// Token ID
+    pub token_id: TokenId,
+    /// Fill details
+    pub fill: Fill,
+    /// Total filled size so far
+    pub total_filled: Decimal,
+    /// Remaining size after this fill
+    pub remaining: Decimal,
+    /// When the fill was detected
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Order expired event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderExpiredEvent {
+    /// Order ID that expired
+    pub order_id: String,
+    /// Market ID
+    pub market_id: MarketId,
+    /// Token ID
+    pub token_id: TokenId,
+    /// Total size filled before expiry
+    pub filled: Decimal,
+    /// Size that was unfilled
+    pub unfilled: Decimal,
+    /// When the expiry was detected
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Resubmit triggered event for partial fills
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResubmitTriggeredEvent {
+    /// Original order ID
+    pub original_order_id: String,
+    /// New order being submitted
+    pub new_order: crate::Order,
+    /// Market ID
+    pub market_id: MarketId,
+    /// Remaining size being resubmitted
+    pub remaining_size: Decimal,
+    /// Which resubmit attempt this is
+    pub resubmit_attempt: u32,
+    /// When the resubmit was triggered
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Gas price update event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GasPriceUpdateEvent {
+    /// Current gas price
+    pub gas_price: crate::GasPrice,
+    /// Previous gas price (if available)
+    pub previous_price: Option<crate::GasPrice>,
+    /// Current gas condition
+    pub condition: crate::GasCondition,
+    /// Previous gas condition (if available)
+    pub previous_condition: Option<crate::GasCondition>,
+    /// Whether this is a spike
+    pub is_spike: bool,
+    /// Average gas price in gwei (for comparison)
+    pub average_gwei: Option<Decimal>,
+    /// When the update occurred
+    pub timestamp: DateTime<Utc>,
+}
+
+impl GasPriceUpdateEvent {
+    /// Create a new gas price update event
+    pub fn new(
+        gas_price: crate::GasPrice,
+        previous_price: Option<crate::GasPrice>,
+        condition: crate::GasCondition,
+        previous_condition: Option<crate::GasCondition>,
+        is_spike: bool,
+        average_gwei: Option<Decimal>,
+    ) -> Self {
+        Self {
+            gas_price,
+            previous_price,
+            condition,
+            previous_condition,
+            is_spike,
+            average_gwei,
+            timestamp: chrono::Utc::now(),
+        }
+    }
+
+    /// Check if the gas condition changed
+    pub fn condition_changed(&self) -> bool {
+        self.previous_condition.map_or(false, |prev| prev != self.condition)
+    }
+}
+
+/// Order replaced event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderReplacedEvent {
+    /// Original order ID being replaced
+    pub original_order_id: String,
+    /// New order ID
+    pub new_order_id: String,
+    /// Market ID
+    pub market_id: MarketId,
+    /// Old price
+    pub old_price: Decimal,
+    /// New price
+    pub new_price: Decimal,
+    /// Filled size preserved from original order
+    pub preserved_fill: Decimal,
+    /// Reason for replacement
+    pub reason: String,
+    /// When the replacement occurred
+    pub timestamp: DateTime<Utc>,
 }

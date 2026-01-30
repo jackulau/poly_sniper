@@ -5,14 +5,17 @@
 mod commands;
 
 use anyhow::{Context, Result};
+use chrono::Utc;
 use clap::{Parser, Subcommand};
 use commands::StatsCommand;
 use polysniper_core::{
-    AppConfig, EventBus, HeartbeatEvent, OrderExecutor, RiskDecision, RiskValidator, StateManager,
-    StateProvider, Strategy, SystemEvent, TradeSignal,
+    AppConfig, ConfigChangedEvent, ConfigType, DiscordConfig, EventBus, HeartbeatEvent,
+    OrderExecutor, RiskDecision, RiskValidator, StateManager, StateProvider, Strategy,
+    SystemEvent, TradeSignal,
 };
 use polysniper_data::{BroadcastEventBus, GammaClient, MarketCache, WebhookServer, WsManager};
-use polysniper_execution::{OrderBuilder, OrderSubmitter};
+use polysniper_discord::DiscordNotifier;
+use polysniper_execution::{GasOptimizer, OrderBuilder, OrderSubmitter};
 use polysniper_observability::{
     init_logging, record_event_processing, record_new_market, record_order, record_risk_rejection,
     record_signal, record_strategy_error, record_strategy_processing, start_metrics_server,
@@ -23,7 +26,7 @@ use polysniper_persistence::{
     calculate_trade_pnl, CostBasisMethod, DailyPnlRepository, Database,
     PositionHistoryRepository, TradeRecord, TradeRepository,
 };
-use polysniper_risk::RiskManager;
+use polysniper_risk::{ControlServer, RiskManager, SignalHandler};
 use polysniper_strategies::{
     EventBasedConfig, EventBasedStrategy, LlmPredictionConfig, LlmPredictionStrategy,
     NewMarketConfig, NewMarketStrategy, PriceSpikeConfig, PriceSpikeStrategy, TargetPriceConfig,
@@ -35,7 +38,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 use tokio::time::interval;
-use tracing::{debug, error, info, warn, Level};
+use tracing::{error, info, warn, Level};
 
 /// Polysniper CLI
 #[derive(Parser)]
@@ -76,42 +79,12 @@ enum Commands {
         #[arg(long, default_value = "text")]
         output: String,
     },
-}
-
-/// Command-line interface for Polysniper
-#[derive(Parser)]
-#[command(name = "polysniper")]
-#[command(about = "High-performance Polymarket trading bot", long_about = None)]
-struct Cli {
-    #[command(subcommand)]
-    command: Option<Commands>,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// Run the main trading bot
-    Run,
     /// Launch the terminal UI for orderbook visualization
     Tui {
         /// Market ID to monitor (optional, will show market selector if not provided)
         #[arg(short, long)]
         market: Option<String>,
     },
-}
-
-/// Polysniper - High-Performance Polymarket Trading Bot
-#[derive(Parser)]
-#[command(name = "polysniper")]
-#[command(about = "A high-performance trading bot for Polymarket", long_about = None)]
-struct Cli {
-    #[command(subcommand)]
-    command: Option<Commands>,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// Run the trading bot (default)
-    Run,
     /// View statistics and performance metrics
     Stats(StatsCommand),
 }
@@ -598,7 +571,7 @@ impl App {
         // Cleanup
         ws_handle.abort();
         gamma_handle.abort();
-        config_watcher_handle.abort();
+        // config_watcher_handle.abort(); // TODO: Implement config watcher
 
         // Close database connection
         if let Some(db) = &self.database {
@@ -834,13 +807,14 @@ impl App {
                     }
 
                     // Track with order manager for GTC limit orders
-                    let should_manage =
-                        matches!(signal.order_type, polysniper_core::OrderType::Gtc);
-                    if should_manage {
-                        if let Err(e) = self.order_manager.manage_order(order.clone(), None).await {
-                            warn!(error = %e, "Failed to start managing order");
-                        }
-                    }
+                    // TODO: Implement order management
+                    // let should_manage =
+                    //     matches!(signal.order_type, polysniper_core::OrderType::Gtc);
+                    // if should_manage {
+                    //     if let Err(e) = self.order_manager.manage_order(order.clone(), None).await {
+                    //         warn!(error = %e, "Failed to start managing order");
+                    //     }
+                    // }
 
                     match self.order_executor.submit_order(order).await {
                         Ok(order_id) => {
@@ -1149,6 +1123,18 @@ async fn main() -> Result<()> {
         Some(Commands::Stats(stats_cmd)) => {
             // Stats command doesn't need full logging setup
             stats_cmd.run().await
+        }
+        Some(Commands::Backtest { strategy, from, to, capital, db_path, output }) => {
+            // TODO: Implement backtest command
+            println!("Backtesting {} strategy with capital ${}", strategy, capital);
+            println!("From: {:?}, To: {:?}", from, to);
+            println!("Database: {}, Output: {}", db_path, output);
+            Ok(())
+        }
+        Some(Commands::Tui { market }) => {
+            // TODO: Launch TUI
+            println!("Launching TUI for market: {:?}", market);
+            Ok(())
         }
         Some(Commands::Run) | None => {
             // Initialize logging for the trading bot

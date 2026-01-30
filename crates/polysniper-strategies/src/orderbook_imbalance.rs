@@ -379,6 +379,19 @@ impl Strategy for OrderbookImbalanceStrategy {
     fn set_enabled(&mut self, enabled: bool) {
         self.enabled.store(enabled, Ordering::SeqCst);
     }
+
+    async fn reload_config(&mut self, config_content: &str) -> Result<(), StrategyError> {
+        let new_config: OrderbookImbalanceConfig = toml::from_str(config_content)
+            .map_err(|e| StrategyError::ConfigError(format!("Failed to parse config: {}", e)))?;
+
+        self.config = new_config;
+        tracing::info!(strategy_id = %self.id, "Reloaded orderbook imbalance strategy config");
+        Ok(())
+    }
+
+    fn config_name(&self) -> &str {
+        "orderbook_imbalance"
+    }
 }
 
 fn rand_suffix() -> String {

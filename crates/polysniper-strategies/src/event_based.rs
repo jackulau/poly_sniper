@@ -5,8 +5,8 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use polysniper_core::{
-    ExternalSignalEvent, MarketId, OrderType, Outcome, Priority, Side, SignalSource, StateProvider,
-    Strategy, StrategyError, SystemEvent, TradeSignal,
+    ExternalSignalEvent, MarketId, MlConfig, OrderType, Outcome, Priority, Side, SignalSource,
+    StateProvider, Strategy, StrategyError, SystemEvent, TradeSignal,
 };
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -238,7 +238,9 @@ impl EventBasedStrategy {
         let entry_price = current_price.unwrap_or(dec!(0.50));
 
         // Calculate order size with ML confidence multiplier
-        let base_size_usd = self.config.default_order_size_usd;
+        let config = self.config.read().await;
+        let base_size_usd = config.default_order_size_usd;
+        drop(config);
         let adjusted_size_usd = base_size_usd * ml_result.size_multiplier;
 
         let size = if entry_price.is_zero() {
@@ -468,9 +470,13 @@ impl Strategy for EventBasedStrategy {
             return Ok(signals);
         }
 
+        // Read config for rule matching
+        let config = self.config.read().await;
+        let default_order_size_usd = config.default_order_size_usd;
+
         // Find matching rule (for non-ML signals)
-        let rule = match self.find_matching_rule(external_signal) {
-            Some(r) => r,
+        let rule = match self.find_matching_rule_sync(external_signal, &config.rules) {
+            Some(r) => r.clone(),
             None => {
                 debug!(
                     content = %external_signal.content,
@@ -479,6 +485,8 @@ impl Strategy for EventBasedStrategy {
                 return Ok(signals);
             }
         };
+        let market_mappings = config.market_mappings.clone();
+        drop(config);
 
         info!(
             rule_name = %rule.name,
@@ -488,7 +496,7 @@ impl Strategy for EventBasedStrategy {
 
         // Resolve market
         let (market_id, yes_token_id, no_token_id) = match self
-            .resolve_market(&rule.action, external_signal, state)
+            .resolve_market(&rule.action, external_signal, state, &market_mappings)
             .await
         {
             Some(m) => m,
