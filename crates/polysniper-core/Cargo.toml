@@ -16,16 +16,10 @@ notify = { version = "6.1", default-features = false, features = ["macos_kqueue"
 
 [dev-dependencies]
 rust_decimal_macros.workspace = true
-tempfile = "3"
-tempfile = "3.12"
-tempfile = "3.24"
-tempfile = "3.15"
 tempfile = "3.24"
 criterion = "0.5"
 rand = "0.8"
-tempfile = "3"
 
 [[bench]]
 name = "orderbook_bench"
 harness = false
-tempfile = "3.24"

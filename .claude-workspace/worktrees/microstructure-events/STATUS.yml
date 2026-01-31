@@ -1,0 +1,11 @@
+id: microstructure-events
+status: complete
+branch: polysniper/microstructure-events
+worktree_path: .claude-workspace/worktrees/microstructure-events/worktree
+assigned_to: claude
+started_at: "2026-01-31T00:00:00Z"
+completed_at: "2026-01-31T18:30:00Z"
+dependencies_met: true
+conflicts: []
+commit_sha: 8435d0f291b72184635e3f6a2521d67e89f7d48e
+tests_passing: true

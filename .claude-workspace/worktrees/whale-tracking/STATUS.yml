@@ -1,0 +1,11 @@
+id: whale-tracking
+status: complete
+branch: polysniper/whale-tracking
+worktree_path: .claude-workspace/worktrees/whale-tracking/worktree
+assigned_to: null
+started_at: 2026-01-31T00:00:00Z
+completed_at: 2026-01-31T00:00:00Z
+dependencies_met: true
+conflicts: []
+commit_sha: b24b4541dbdb2d13cd1c6cee45b0236d17c0b369
+tests_passing: true

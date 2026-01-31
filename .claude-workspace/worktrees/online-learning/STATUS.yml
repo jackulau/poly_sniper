@@ -1,0 +1,11 @@
+id: online-learning
+status: complete
+branch: polysniper/online-learning
+worktree_path: .claude-workspace/worktrees/online-learning/worktree
+assigned_to: claude
+started_at: "2026-01-31T12:06:00Z"
+completed_at: "2026-01-31T12:45:00Z"
+dependencies_met: true
+conflicts: []
+commit_sha: 7b7a6753798ac674db2e0165d65e790849ddd528
+tests_passing: true

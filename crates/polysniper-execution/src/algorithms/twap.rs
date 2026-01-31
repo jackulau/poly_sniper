@@ -136,8 +136,6 @@ impl TwapExecutor {
     /// Get the shortfall tracker
     pub fn shortfall_tracker(&self) -> &Arc<ShortfallTracker> {
         &self.shortfall_tracker
-            participation_adapter: None,
-        }
     }
 
     /// Create a new TWAP executor with adaptive participation support

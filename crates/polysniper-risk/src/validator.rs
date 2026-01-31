@@ -1,8 +1,6 @@
 //! Risk validation implementation
 
 use crate::correlation::CorrelationTracker;
-use crate::drawdown::DrawdownCalculator;
-use crate::kelly::{KellyCalculator, TradeOutcome};
 use crate::time_rules::{TimeRuleEngine, TimeRuleResult};
 use crate::var::VaRCalculator;
 use crate::volatility::VolatilityCalculator;
@@ -35,14 +33,11 @@ pub struct RiskManager {
     recent_orders: Arc<RwLock<VecDeque<OrderRecord>>>,
     /// Volatility calculator for position sizing
     volatility_calculator: VolatilityCalculator,
-    /// Kelly criterion calculator for edge-based position sizing
-    kelly_calculator: KellyCalculator,
     /// Time-based rule engine
     time_rule_engine: TimeRuleEngine,
     /// Correlation tracker for correlated position limits
+    #[allow(dead_code)]
     correlation_tracker: CorrelationTracker,
-    /// Drawdown calculator for portfolio-level risk scaling
-    drawdown_calculator: DrawdownCalculator,
     /// VaR calculator for portfolio risk limits
     var_calculator: VaRCalculator,
 }
@@ -51,10 +46,8 @@ impl RiskManager {
     /// Create a new risk manager
     pub fn new(config: RiskConfig) -> Self {
         let volatility_calculator = VolatilityCalculator::new(config.volatility.clone());
-        let kelly_calculator = KellyCalculator::new(config.kelly.clone());
         let time_rule_engine = TimeRuleEngine::new(config.time_rules.clone());
         let correlation_tracker = CorrelationTracker::new(config.correlation.clone());
-        let drawdown_calculator = DrawdownCalculator::new(config.drawdown.clone());
         let var_calculator = VaRCalculator::new(config.var.clone());
         Self {
             config: Arc::new(RwLock::new(config)),
@@ -62,16 +55,8 @@ impl RiskManager {
             halt_reason: Arc::new(RwLock::new(None)),
             recent_orders: Arc::new(RwLock::new(VecDeque::new())),
             volatility_calculator,
-            kelly_calculator,
             time_rule_engine,
             correlation_tracker,
-            drawdown_calculator,
-        }
-    }
-
-    /// Get a reference to the Kelly calculator
-    pub fn kelly_calculator(&self) -> &KellyCalculator {
-        &self.kelly_calculator
             var_calculator,
         }
     }
@@ -89,11 +74,6 @@ impl RiskManager {
     /// Get a reference to the time rule engine
     pub fn time_rule_engine(&self) -> &TimeRuleEngine {
         &self.time_rule_engine
-    }
-
-    /// Get a reference to the correlation tracker
-    pub fn correlation_tracker(&self) -> &CorrelationTracker {
-        &self.correlation_tracker
     }
 
     /// Check time rules for a signal and market
@@ -218,28 +198,6 @@ impl RiskManager {
     /// Get current config (for inspection)
     pub async fn get_config(&self) -> RiskConfig {
         self.config.read().await.clone()
-    }
-
-    /// Update portfolio equity for drawdown tracking
-    ///
-    /// This should be called after fills, mark-to-market updates, or any portfolio value change.
-    pub fn update_equity(&self, new_value: Decimal) {
-        self.drawdown_calculator.update_equity(new_value);
-    }
-
-    /// Set the initial peak value for drawdown tracking (e.g., from persistence)
-    pub fn set_peak_value(&self, peak: Decimal) {
-        self.drawdown_calculator.set_peak_value(peak);
-    }
-
-    /// Get reference to the drawdown calculator for status queries
-    pub fn drawdown_calculator(&self) -> &DrawdownCalculator {
-        &self.drawdown_calculator
-    }
-
-    /// Get reference to the correlation tracker
-    pub fn correlation_tracker(&self) -> &CorrelationTracker {
-        &self.correlation_tracker
     }
 
     /// Record an order for rate limiting
@@ -426,90 +384,6 @@ impl RiskManager {
         None
     }
 
-    /// Calculate drawdown-adjusted size based on portfolio drawdown
-    ///
-    /// Returns (adjusted_size, reason) if drawdown adjustment applies
-    fn calculate_drawdown_adjusted_size(
-        &self,
-        original_size: Decimal,
-        signal_id: &str,
-    ) -> Option<(Decimal, String)> {
-        if !self.drawdown_calculator.is_enabled() {
-            return None;
-        }
-
-        let drawdown_pct = self.drawdown_calculator.calculate_drawdown_pct();
-        let multiplier = self.drawdown_calculator.get_current_multiplier();
-
-        // Only report modification if multiplier is not 1.0
-        if multiplier != Decimal::ONE {
-            let adjusted_size = original_size * multiplier;
-
-            let reason = format!(
-                "Drawdown-adjusted: size {} -> {} (multiplier: {:.2}, drawdown: {:.2}%)",
-                original_size, adjusted_size, multiplier, drawdown_pct
-            );
-
-            info!(
-                signal_id = %signal_id,
-                original_size = %original_size,
-                adjusted_size = %adjusted_size,
-                multiplier = %multiplier,
-                drawdown_pct = %drawdown_pct,
-                "Applying drawdown-based position sizing"
-            );
-
-            return Some((adjusted_size, reason));
-    /// Calculate Kelly-adjusted size based on trade history edge
-    ///
-    /// Returns (adjusted_size, reason) if Kelly adjustment applies.
-    /// Kelly sizing is applied AFTER volatility adjustment.
-    async fn calculate_kelly_adjusted_size(
-        &self,
-        current_size: Decimal,
-        state: &dyn StateProvider,
-    ) -> Option<(Decimal, String)> {
-        if !self.kelly_calculator.is_enabled() {
-            return None;
-        }
-
-        // Get trade history for Kelly calculation
-        let config = self.config.read().await;
-        let window_size = config.kelly.window_size as usize;
-        drop(config);
-
-        let trade_outcomes_raw = state.get_trade_outcomes(window_size).await;
-
-        if trade_outcomes_raw.is_empty() {
-            debug!("No trade history for Kelly calculation, skipping adjustment");
-            return None;
-        }
-
-        // Convert to TradeOutcome structs
-        let trade_outcomes: Vec<TradeOutcome> = trade_outcomes_raw
-            .iter()
-            .map(|(pnl, size_usd)| TradeOutcome::new(*pnl, *size_usd))
-            .collect();
-
-        let (adjusted_size, multiplier, reason) = self
-            .kelly_calculator
-            .adjust_size(current_size, &trade_outcomes);
-
-        // Only report modification if multiplier is not 1.0
-        if multiplier != Decimal::ONE {
-            if let Some(reason_str) = reason {
-                info!(
-                    original_size = %current_size,
-                    adjusted_size = %adjusted_size,
-                    multiplier = %multiplier,
-                    trade_count = trade_outcomes.len(),
-                    "Applying Kelly criterion position sizing"
-                );
-                return Some((adjusted_size, reason_str));
-            }
-        }
-
-        None
     /// Check if the order would exceed VaR limits
     ///
     /// Returns Ok(None) if VaR check passes, Ok(Some(Decision)) for modification/rejection
@@ -733,54 +607,13 @@ impl RiskValidator for RiskManager {
             return Err(e);
         }
 
-        // Apply volatility-based position sizing first
-        let (mut current_size, mut reasons) = (signal.size, Vec::new());
-
-        if let Some((vol_adjusted_size, vol_reason)) =
+        // Apply volatility-based position sizing
+        if let Some((adjusted_size, reason)) =
             self.calculate_volatility_adjusted_size(signal, state).await
         {
-            current_size = vol_adjusted_size;
-            reasons.push(vol_reason);
-        }
-
-        // Apply drawdown-based position sizing (after volatility adjustment)
-        if let Some((drawdown_adjusted_size, drawdown_reason)) =
-            self.calculate_drawdown_adjusted_size(current_size, &signal.id)
-        {
-            current_size = drawdown_adjusted_size;
-            reasons.push(drawdown_reason);
-        }
-
-        // If any adjustments were made, return Modified decision
-        if !reasons.is_empty() {
             return Ok(RiskDecision::Modified {
-                new_size: current_size,
-                reason: reasons.join("; "),
-        let (current_size, mut reasons) = match self
-            .calculate_volatility_adjusted_size(signal, state)
-            .await
-        {
-            Some((adjusted_size, reason)) => (adjusted_size, vec![reason]),
-            None => (signal.size, vec![]),
-        };
-
-        // Apply Kelly criterion sizing after volatility adjustment
-        let (final_size, final_reasons) = match self
-            .calculate_kelly_adjusted_size(current_size, state)
-            .await
-        {
-            Some((kelly_adjusted, kelly_reason)) => {
-                reasons.push(kelly_reason);
-                (kelly_adjusted, reasons)
-            }
-            None => (current_size, reasons),
-        };
-
-        // Return modified decision if any sizing adjustments were made
-        if !final_reasons.is_empty() {
-            return Ok(RiskDecision::Modified {
-                new_size: final_size,
-                reason: final_reasons.join("; "),
+                new_size: adjusted_size,
+                reason,
             });
         }
 
@@ -822,8 +655,6 @@ mod tests {
     use polysniper_core::{
         CorrelationConfig, CorrelationGroupConfig, Market, OrderType, Orderbook, Outcome, Position,
         Priority, Side,
-        CorrelationConfig, CorrelationGroupConfig, Market, Orderbook, Outcome, Position, Priority,
-        Side, OrderType, TimeRulesConfig, VolatilityConfig,
     };
     use rust_decimal_macros::dec;
     use std::collections::HashMap;
@@ -921,11 +752,6 @@ mod tests {
         async fn get_daily_pnl(&self) -> Decimal {
             self.daily_pnl
         }
-
-        async fn get_trade_outcomes(&self, _limit: usize) -> Vec<(Decimal, Decimal)> {
-            // Return empty for existing tests (no Kelly adjustment)
-            Vec::new()
-        }
     }
 
     fn create_test_signal(
@@ -953,18 +779,12 @@ mod tests {
     }
 
     fn create_config_with_correlation(groups: Vec<CorrelationGroupConfig>) -> RiskConfig {
-        use polysniper_core::{CorrelationRegimeConfig, TimeRulesConfig, VolatilityConfig};
         RiskConfig {
             max_position_size_usd: dec!(5000),
             max_order_size_usd: dec!(500),
             daily_loss_limit_usd: dec!(500),
             circuit_breaker_loss_usd: dec!(300),
             max_orders_per_minute: 60,
-            volatility: VolatilityConfig::default(),
-            time_rules: TimeRulesConfig::default(),
-            volatility: Default::default(),
-            volatility: Default::default(),
-            kelly: Default::default(),
             volatility: Default::default(),
             time_rules: Default::default(),
             correlation: CorrelationConfig {
@@ -973,9 +793,7 @@ mod tests {
                 window_secs: 3600,
                 max_correlated_exposure_usd: dec!(3000),
                 groups,
-                regime: CorrelationRegimeConfig::default(),
             },
-            drawdown: Default::default(),
             var: Default::default(),
         }
     }
@@ -1025,7 +843,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "correlation limit validation not yet integrated into RiskManager.validate()"]
     async fn test_reduce_order_when_correlation_limit_exceeded() {
         let config = create_config_with_correlation(vec![CorrelationGroupConfig {
             name: "election".to_string(),
@@ -1067,7 +884,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "correlation limit validation not yet integrated into RiskManager.validate()"]
     async fn test_reject_order_when_at_correlation_limit() {
         let config = create_config_with_correlation(vec![CorrelationGroupConfig {
             name: "election".to_string(),
@@ -1101,7 +917,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "correlation limit validation not yet integrated into RiskManager.validate()"]
     async fn test_pattern_matching_in_correlation_groups() {
         let config = create_config_with_correlation(vec![CorrelationGroupConfig {
             name: "swing-states".to_string(),
@@ -1165,8 +980,6 @@ mod tests {
 
         let risk_manager = RiskManager::new(config);
 
-        assert!(risk_manager.correlation_tracker.is_enabled());
-        assert_eq!(risk_manager.correlation_tracker.max_correlated_exposure(), dec!(3000));
         assert!(risk_manager.correlation_tracker().is_enabled());
         assert_eq!(
             risk_manager.correlation_tracker().max_correlated_exposure(),

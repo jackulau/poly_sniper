@@ -1,0 +1,7 @@
+id: polymarket-signals
+status: complete
+branch: polysniper/polymarket-signals
+started_at: 2026-01-31T18:18:21Z
+completed_at: 2026-01-31T18:18:21Z
+commit_sha: b3d844a8c648cf1eadd23b4df15d7fc8dc855010
+tests_passing: true

@@ -31,17 +31,14 @@ uuid.workspace = true
 # Connection warmup dependencies
 rand.workspace = true
 parking_lot = "0.12"
-[dev-dependencies]
-rust_decimal_macros.workspace = true
+
 # Lock-free event bus
 crossbeam-channel.workspace = true
-parking_lot.workspace = true
 
 [dev-dependencies]
+rust_decimal_macros.workspace = true
 criterion.workspace = true
 
 [[bench]]
 name = "event_bus_bench"
 harness = false
-[dev-dependencies]
-rust_decimal_macros.workspace = true

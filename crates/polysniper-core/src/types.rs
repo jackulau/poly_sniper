@@ -677,6 +677,7 @@ impl Default for RiskConfig {
             time_rules: TimeRulesConfig::default(),
             correlation: CorrelationConfig::default(),
             drawdown: DrawdownConfig::default(),
+            var: VaRConfig::default(),
         }
     }
 }
@@ -710,7 +711,6 @@ impl Default for ShortfallConfig {
             favorable_speed_multiplier: Decimal::new(7, 1), // 0.7x
             min_speed_multiplier: Decimal::new(5, 1),     // 0.5x
             max_speed_multiplier: Decimal::new(2, 0),     // 2.0x
-            var: VaRConfig::default(),
         }
     }
 }
@@ -1366,6 +1366,10 @@ impl Default for ConnectionConfig {
                 "https://clob.polymarket.com/".to_string(),
                 "https://gamma-api.polymarket.com/".to_string(),
             ],
+        }
+    }
+}
+
 /// Configuration for the volume monitor used in participation rate adaptation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolumeMonitorConfig {
@@ -1418,6 +1422,10 @@ impl Default for ParticipationConfig {
             urgency_boost: Decimal::new(5, 2),        // 0.05 = 5%
             time_pressure_boost: Decimal::new(13, 1), // 1.3 = 30% boost
             time_pressure_threshold: Decimal::new(2, 1), // 0.2 = 20%
+        }
+    }
+}
+
 /// Operating mode for the RL execution agent
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

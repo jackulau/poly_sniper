@@ -218,8 +218,6 @@ impl WsManager {
     pub fn with_config(
         ws_url: String,
         event_tx: broadcast::Sender<SystemEvent>,
-        config: ConnectionConfig,
-    ) -> Self {
         config: WsManagerConfig,
     ) -> Self {
         info!(

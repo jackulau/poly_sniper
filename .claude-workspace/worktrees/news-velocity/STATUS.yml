@@ -1,0 +1,11 @@
+id: news-velocity
+status: complete
+branch: polysniper/news-velocity
+worktree_path: .claude-workspace/worktrees/news-velocity/worktree
+assigned_to: null
+started_at: 2026-01-31T00:00:00Z
+completed_at: 2026-01-31T00:00:00Z
+dependencies_met: true
+conflicts: []
+commit_sha: 6e9a672627d3a51b5e699e9b40151763ff9a4abb
+tests_passing: true

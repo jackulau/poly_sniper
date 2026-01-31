@@ -1,0 +1,11 @@
+id: lock-free-event-bus
+status: complete
+branch: polysniper/lock-free-event-bus
+worktree_path: /Users/jacklau/Polysniper/.claude-workspace/worktrees/lock-free-event-bus/worktree
+assigned_to: null
+started_at: 2026-01-31T12:00:00Z
+completed_at: 2026-01-31T12:45:00Z
+dependencies_met: true
+conflicts: []
+commit_sha: 59b7e710e493d7c904e4f7f39c71ba00803e9d93
+tests_passing: true

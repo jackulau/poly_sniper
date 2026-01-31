@@ -1,0 +1,11 @@
+id: memory-mapped-orderbook
+status: complete
+branch: polysniper/memory-mapped-orderbook
+worktree_path: .claude-workspace/worktrees/memory-mapped-orderbook/worktree
+assigned_to: opus
+started_at: 2026-01-31T12:00:00Z
+completed_at: 2026-01-31T18:08:54Z
+dependencies_met: true
+conflicts: []
+commit_sha: f26483cfb8e9eec302d55c9244cc925ca31d19ba
+tests_passing: true

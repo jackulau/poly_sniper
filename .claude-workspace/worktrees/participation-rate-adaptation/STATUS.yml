@@ -1,0 +1,11 @@
+id: participation-rate-adaptation
+status: complete
+branch: polysniper/participation-rate-adaptation
+worktree_path: /Users/jacklau/Polysniper/.claude-workspace/worktrees/participation-rate-adaptation/worktree
+assigned_to: claude
+started_at: 2026-01-31T00:00:00Z
+completed_at: 2026-01-31T01:00:00Z
+dependencies_met: true
+conflicts: []
+commit_sha: dc0669c3ead862cbfcaa748cfaa41c9dd8acae19
+tests_passing: true

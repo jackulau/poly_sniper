@@ -1,0 +1,11 @@
+id: batch-signal-processing
+status: complete
+branch: polysniper/batch-signal-processing
+worktree_path: .claude-workspace/worktrees/batch-signal-processing/worktree
+assigned_to: claude
+started_at: 2026-01-31T18:06:54Z
+completed_at: 2026-01-31T18:06:54Z
+dependencies_met: true
+conflicts: []
+commit_sha: 2af646b77ae9cdacb6abce7f90c7727fd82523fe
+tests_passing: true

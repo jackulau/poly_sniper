@@ -1,0 +1,11 @@
+id: cross-asset-signals
+status: complete
+branch: polysniper/cross-asset-signals
+worktree_path: .claude-workspace/worktrees/cross-asset-signals/worktree
+assigned_to: null
+started_at: 2026-01-31T17:57:13Z
+completed_at: 2026-01-31T17:57:13Z
+dependencies_met: true
+conflicts: []
+commit_sha: 6d47af6b18a90d010fbd36e185547fd865779c4b
+tests_passing: true

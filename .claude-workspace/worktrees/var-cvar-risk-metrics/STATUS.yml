@@ -1,0 +1,11 @@
+id: var-cvar-risk-metrics
+status: complete
+branch: polysniper/var-cvar-risk-metrics
+worktree_path: .claude-workspace/worktrees/var-cvar-risk-metrics/worktree
+assigned_to: claude
+started_at: 2026-01-31T18:16:31Z
+completed_at: 2026-01-31T18:16:31Z
+dependencies_met: true
+conflicts: []
+commit_sha: 46de2af870c152f0ea21daaa3822e569d18c20cd
+tests_passing: true

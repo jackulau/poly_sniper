@@ -34,6 +34,7 @@ pub use event_bus::BroadcastEventBus;
 pub use event_bus_fast::{
     AsyncEventSubscription, BackpressureConfig, EventBusMetrics, EventSubscription,
     EventSubscriptionExt, LockFreeEventBus, UnifiedEventBus,
+};
 pub use external_markets::{
     ExternalMarketError, ExternalMarketPrice, KalshiClient, KalshiConfig, KalshiEvent,
     KalshiMarket, MetaculusClient, MetaculusConfig, MetaculusPrediction, Platform,
@@ -53,6 +54,7 @@ pub use providers::{BoxedProvider, LlmProvider, OpenRouterProvider, ProviderErro
 pub use polymarket_activity::{
     PolymarketActivityClient, PolymarketActivityConfig, TraderPosition, TraderProfile,
     VolumeSnapshot,
+};
 pub use prediction_aggregator::{
     AggregatedPrice, ArbitrageOpportunity, ArbitrageType, MarketMapping, PlatformWeights,
     PredictionAggregator, PredictionAggregatorConfig, Side,

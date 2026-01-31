@@ -1,0 +1,10 @@
+id: enhanced-fill-probability
+status: complete
+branch: polysniper/enhanced-fill-probability
+worktree_path: .claude-workspace/worktrees/enhanced-fill-probability/worktree
+started_at: 2026-01-31T17:36:56Z
+completed_at: 2026-01-31T17:56:00Z
+dependencies_met: true
+conflicts: []
+commit_sha: 4393982
+tests_passing: true

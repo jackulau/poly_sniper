@@ -1,0 +1,11 @@
+id: feature-store
+status: complete
+branch: polysniper/feature-store
+worktree_path: .claude-workspace/worktrees/feature-store/worktree
+assigned_to: null
+started_at: 2026-01-31T18:06:25Z
+completed_at: 2026-01-31T18:06:25Z
+dependencies_met: true
+conflicts: []
+commit_sha: b380eaf4f2aff1b6a08ecba68462477d41e74d75
+tests_passing: true

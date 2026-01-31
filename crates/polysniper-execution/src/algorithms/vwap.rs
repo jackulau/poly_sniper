@@ -252,8 +252,6 @@ impl VwapExecutor {
     /// Get the shortfall tracker
     pub fn shortfall_tracker(&self) -> &Arc<ShortfallTracker> {
         &self.shortfall_tracker
-            participation_adapter: None,
-        }
     }
 
     /// Create a new VWAP executor with adaptive participation support

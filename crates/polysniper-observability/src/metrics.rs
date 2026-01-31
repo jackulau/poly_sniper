@@ -294,6 +294,8 @@ lazy_static! {
             "Accuracy of fill probability predictions (predicted - actual)"
         ).buckets(vec![-1.0, -0.5, -0.2, -0.1, 0.0, 0.1, 0.2, 0.5, 1.0]),
         &["method"]
+    ).unwrap();
+
     // Implementation shortfall metrics
     pub static ref EXECUTION_SHORTFALL_BPS: HistogramVec = HistogramVec::new(
         HistogramOpts::new(
@@ -331,6 +333,8 @@ lazy_static! {
     pub static ref SHORTFALL_SPEED_ADJUSTMENTS: IntCounterVec = IntCounterVec::new(
         Opts::new("polysniper_shortfall_speed_adjustments_total", "Speed adjustments made due to shortfall"),
         &["direction"]
+    ).unwrap();
+
     // Volume and participation metrics
     pub static ref VOLUME_RATIO_CURRENT: GaugeVec = GaugeVec::new(
         Opts::new("polysniper_volume_ratio_current", "Current volume ratio (current/average) per token"),
@@ -702,6 +706,8 @@ pub fn record_batch_deduplication(event_type: &str, unique_count: usize, total_c
             .with_label_values(&[event_type])
             .observe(ratio);
     }
+}
+
 /// Record a fill probability estimate
 pub fn record_fill_probability_estimate(method: &str, probability: f64, confidence: f64) {
     FILL_PROBABILITY_ESTIMATE
@@ -728,6 +734,8 @@ pub fn record_fill_probability_accuracy(method: &str, predicted: f64, actual: f6
     FILL_PROBABILITY_ACCURACY
         .with_label_values(&[method])
         .observe(error);
+}
+
 /// Record implementation shortfall
 pub fn record_shortfall(algorithm: &str, side: &str, shortfall_bps: f64) {
     EXECUTION_SHORTFALL_BPS
@@ -769,6 +777,8 @@ pub fn record_speed_adjustment(direction: &str) {
     SHORTFALL_SPEED_ADJUSTMENTS
         .with_label_values(&[direction])
         .inc();
+}
+
 /// Update event bus queue depth for a subscriber
 pub fn update_event_bus_queue_depth(subscriber_id: &str, depth: f64) {
     EVENT_BUS_QUEUE_DEPTH
@@ -791,6 +801,8 @@ pub fn record_event_bus_publish_latency(event_type: &str, latency_secs: f64) {
 /// Update event bus subscriber count
 pub fn update_event_bus_subscriber_count(count: i64) {
     EVENT_BUS_SUBSCRIBER_COUNT.set(count);
+}
+
 /// Update volume ratio for a token
 pub fn update_volume_ratio(token_id: &str, ratio: f64) {
     VOLUME_RATIO_CURRENT

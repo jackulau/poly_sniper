@@ -1,0 +1,11 @@
+id: kelly-criterion-sizing
+status: complete
+branch: polysniper/kelly-criterion-sizing
+worktree_path: /Users/jacklau/Polysniper/.claude-workspace/worktrees/kelly-criterion-sizing/worktree
+assigned_to: claude
+started_at: 2026-01-31T17:37:22Z
+completed_at: 2026-01-31T18:02:06Z
+dependencies_met: true
+conflicts: []
+commit_sha: 04680e155d0897fd5fd1872a0aa63c859f168662
+tests_passing: true

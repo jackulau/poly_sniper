@@ -1,0 +1,11 @@
+id: drawdown-scaling
+status: complete
+branch: polysniper/drawdown-scaling
+worktree_path: .claude-workspace/worktrees/drawdown-scaling/worktree
+assigned_to: null
+started_at: 2026-01-31T17:50:33Z
+completed_at: 2026-01-31T17:50:33Z
+dependencies_met: true
+conflicts: []
+commit_sha: 192b9c0e7ddb38a21abf71dbe714969dbf6746d6
+tests_passing: true
