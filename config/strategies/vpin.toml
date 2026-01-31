@@ -1,0 +1,36 @@
+# VPIN (Volume-Synchronized Probability of Informed Trading) Calculator Configuration
+
+[strategy]
+enabled = true
+id = "vpin"
+name = "VPIN Calculator"
+
+[strategy.vpin]
+# Volume per bucket in USD
+# Trades are accumulated until this volume threshold, then a new bucket starts
+bucket_size_usd = "1000"
+
+# Number of buckets for VPIN calculation (lookback window)
+# More buckets = smoother VPIN, but slower to react to changes
+lookback_buckets = 50
+
+# Threshold for high toxicity alert (0.0 to 1.0)
+# VPIN >= this value triggers high toxicity classification
+high_toxicity_threshold = "0.7"
+
+# Threshold for low toxicity (0.0 to 1.0)
+# VPIN < this value is considered low toxicity (safe)
+low_toxicity_threshold = "0.3"
+
+# Method to classify trades as buy or sell initiated
+# Options: "tick_rule", "quote_midpoint", "bulk_volume"
+# - tick_rule: Compare trade price to previous trade price
+# - quote_midpoint: Compare trade price to bid-ask midpoint (recommended)
+# - bulk_volume: Lee-Ready algorithm with midpoint + tick fallback
+trade_classification = "quote_midpoint"
+
+# Per-market overrides (optional)
+# Use smaller buckets for more volatile markets
+# [strategy.vpin.market_overrides]
+# "trump-*" = { bucket_size_usd = "500", lookback_buckets = 30 }
+# "election-*" = { bucket_size_usd = "500", lookback_buckets = 30 }
