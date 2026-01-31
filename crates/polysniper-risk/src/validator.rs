@@ -4,6 +4,7 @@ use crate::correlation::CorrelationTracker;
 use crate::drawdown::DrawdownCalculator;
 use crate::kelly::{KellyCalculator, TradeOutcome};
 use crate::time_rules::{TimeRuleEngine, TimeRuleResult};
+use crate::var::VaRCalculator;
 use crate::volatility::VolatilityCalculator;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -42,6 +43,8 @@ pub struct RiskManager {
     correlation_tracker: CorrelationTracker,
     /// Drawdown calculator for portfolio-level risk scaling
     drawdown_calculator: DrawdownCalculator,
+    /// VaR calculator for portfolio risk limits
+    var_calculator: VaRCalculator,
 }
 
 impl RiskManager {
@@ -52,6 +55,7 @@ impl RiskManager {
         let time_rule_engine = TimeRuleEngine::new(config.time_rules.clone());
         let correlation_tracker = CorrelationTracker::new(config.correlation.clone());
         let drawdown_calculator = DrawdownCalculator::new(config.drawdown.clone());
+        let var_calculator = VaRCalculator::new(config.var.clone());
         Self {
             config: Arc::new(RwLock::new(config)),
             halted: Arc::new(AtomicBool::new(false)),
@@ -68,6 +72,18 @@ impl RiskManager {
     /// Get a reference to the Kelly calculator
     pub fn kelly_calculator(&self) -> &KellyCalculator {
         &self.kelly_calculator
+            var_calculator,
+        }
+    }
+
+    /// Get a reference to the VaR calculator
+    pub fn var_calculator(&self) -> &VaRCalculator {
+        &self.var_calculator
+    }
+
+    /// Get a reference to the correlation tracker
+    pub fn correlation_tracker(&self) -> &CorrelationTracker {
+        &self.correlation_tracker
     }
 
     /// Get a reference to the time rule engine
@@ -494,6 +510,110 @@ impl RiskManager {
         }
 
         None
+    /// Check if the order would exceed VaR limits
+    ///
+    /// Returns Ok(None) if VaR check passes, Ok(Some(Decision)) for modification/rejection
+    async fn check_var_limit(
+        &self,
+        signal: &TradeSignal,
+        state: &dyn StateProvider,
+    ) -> Result<Option<RiskDecision>, RiskError> {
+        if !self.var_calculator.is_enabled() {
+            return Ok(None);
+        }
+
+        // Get price history to estimate returns for the new position
+        let price_history = state.get_price_history(&signal.token_id, 720).await; // ~30 days of hourly data
+
+        if price_history.len() < 10 {
+            // Insufficient history for VaR calculation, skip check
+            debug!(
+                signal_id = %signal.id,
+                token_id = %signal.token_id,
+                "Insufficient price history for VaR calculation, skipping check"
+            );
+            return Ok(None);
+        }
+
+        // Calculate returns from price history
+        let prices: Vec<Decimal> = price_history.iter().map(|(_, p)| *p).collect();
+        let returns: Vec<Decimal> = prices
+            .windows(2)
+            .filter_map(|w| {
+                if w[0].is_zero() {
+                    None
+                } else {
+                    Some((w[1] - w[0]) / w[0])
+                }
+            })
+            .collect();
+
+        if returns.is_empty() {
+            return Ok(None);
+        }
+
+        // Calculate marginal VaR of the proposed trade
+        let marginal_var = self
+            .var_calculator
+            .calculate_marginal_var(signal.size_usd, &returns, state)
+            .await;
+
+        // Check if adding this trade would exceed VaR limit
+        if self
+            .var_calculator
+            .would_exceed_var_limit(marginal_var, state)
+            .await
+        {
+            // Calculate remaining VaR budget
+            let remaining_budget = self.var_calculator.remaining_var_budget(state).await;
+
+            if remaining_budget <= Decimal::ZERO {
+                warn!(
+                    signal_id = %signal.id,
+                    marginal_var = %marginal_var,
+                    "Portfolio VaR limit exceeded, rejecting order"
+                );
+                return Err(RiskError::VaRLimitExceeded(format!(
+                    "Order would add ${:.2} VaR, exceeding portfolio limit (no budget remaining)",
+                    marginal_var
+                )));
+            }
+
+            // Try to reduce size to fit within VaR budget
+            // Assuming linear scaling: new_size = original_size * (remaining_budget / marginal_var)
+            if marginal_var > Decimal::ZERO {
+                let scale_factor = remaining_budget / marginal_var;
+                let price = signal.price.unwrap_or(Decimal::ONE);
+                let new_size = signal.size * scale_factor;
+
+                if new_size < Decimal::ONE / price {
+                    // Reduced size too small
+                    return Err(RiskError::VaRLimitExceeded(format!(
+                        "Order would add ${:.2} VaR, reduced size below minimum",
+                        marginal_var
+                    )));
+                }
+
+                warn!(
+                    signal_id = %signal.id,
+                    original_size = %signal.size,
+                    new_size = %new_size,
+                    marginal_var = %marginal_var,
+                    remaining_budget = %remaining_budget,
+                    "Reducing order size due to VaR limit"
+                );
+
+                return Ok(Some(RiskDecision::Modified {
+                    new_size,
+                    reason: format!(
+                        "Order size reduced from {} to {} due to VaR limit (marginal VaR: ${:.2}, budget: ${:.2})",
+                        signal.size, new_size, marginal_var, remaining_budget
+                    ),
+                }));
+            }
+        }
+
+        Ok(None)
     }
 }
 
@@ -541,10 +661,7 @@ impl RiskValidator for RiskManager {
                         let final_size = max_order_size_usd / price;
                         return Ok(RiskDecision::Modified {
                             new_size: final_size,
-                            reason: format!(
-                                "{}; further reduced to order size limit",
-                                reason
-                            ),
+                            reason: format!("{}; further reduced to order size limit", reason),
                         });
                     }
 
@@ -565,9 +682,7 @@ impl RiskValidator for RiskManager {
         // Check order size
         if let Err(e) = self.check_order_size(signal, max_order_size_usd) {
             // Try to adjust size
-            if let Some(new_size) =
-                self.calculate_adjusted_size(signal, max_order_size_usd)
-            {
+            if let Some(new_size) = self.calculate_adjusted_size(signal, max_order_size_usd) {
                 warn!(
                     signal_id = %signal.id,
                     original_size = %signal.size,
@@ -586,7 +701,10 @@ impl RiskValidator for RiskManager {
         }
 
         // Check position limit
-        if let Err(e) = self.check_position_limit(signal, state, max_position_size_usd).await {
+        if let Err(e) = self
+            .check_position_limit(signal, state, max_position_size_usd)
+            .await
+        {
             // Calculate how much room we have
             let current_position = state.get_position(&signal.market_id).await;
             let current_value = current_position
@@ -666,6 +784,11 @@ impl RiskValidator for RiskManager {
             });
         }
 
+        // Check VaR limits
+        if let Some(decision) = self.check_var_limit(signal, state).await? {
+            return Ok(decision);
+        }
+
         Ok(RiskDecision::Approved)
     }
 
@@ -697,8 +820,8 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
     use polysniper_core::{
-        CorrelationConfig, CorrelationGroupConfig, Market, Orderbook, Outcome, Position, Priority,
-        Side, OrderType,
+        CorrelationConfig, CorrelationGroupConfig, Market, OrderType, Orderbook, Outcome, Position,
+        Priority, Side,
     };
     use rust_decimal_macros::dec;
     use std::collections::HashMap;
@@ -720,7 +843,13 @@ mod tests {
             }
         }
 
-        fn with_position(self, market_id: &str, token_id: &str, size: Decimal, price: Decimal) -> Self {
+        fn with_position(
+            self,
+            market_id: &str,
+            token_id: &str,
+            size: Decimal,
+            price: Decimal,
+        ) -> Self {
             let position = Position {
                 market_id: market_id.to_string(),
                 token_id: token_id.to_string(),
@@ -731,8 +860,14 @@ mod tests {
                 unrealized_pnl: Decimal::ZERO,
                 updated_at: Utc::now(),
             };
-            self.positions.write().unwrap().insert(market_id.to_string(), position);
-            self.prices.write().unwrap().insert(token_id.to_string(), price);
+            self.positions
+                .write()
+                .unwrap()
+                .insert(market_id.to_string(), position);
+            self.prices
+                .write()
+                .unwrap()
+                .insert(token_id.to_string(), price);
             self
         }
 
@@ -791,7 +926,12 @@ mod tests {
         }
     }
 
-    fn create_test_signal(market_id: &str, token_id: &str, size_usd: Decimal, price: Decimal) -> TradeSignal {
+    fn create_test_signal(
+        market_id: &str,
+        token_id: &str,
+        size_usd: Decimal,
+        price: Decimal,
+    ) -> TradeSignal {
         TradeSignal {
             id: "test-signal-1".to_string(),
             strategy_id: "test-strategy".to_string(),
@@ -834,17 +974,16 @@ mod tests {
                 regime: CorrelationRegimeConfig::default(),
             },
             drawdown: Default::default(),
+            var: Default::default(),
         }
     }
 
     #[tokio::test]
     async fn test_approve_order_not_in_correlation_group() {
-        let config = create_config_with_correlation(vec![
-            CorrelationGroupConfig {
-                name: "election".to_string(),
-                markets: vec!["presidential-winner".to_string()],
-            },
-        ]);
+        let config = create_config_with_correlation(vec![CorrelationGroupConfig {
+            name: "election".to_string(),
+            markets: vec!["presidential-winner".to_string()],
+        }]);
 
         let risk_manager = RiskManager::new(config);
         let state = MockStateProvider::new();
@@ -858,21 +997,23 @@ mod tests {
 
     #[tokio::test]
     async fn test_approve_order_within_correlation_limit() {
-        let config = create_config_with_correlation(vec![
-            CorrelationGroupConfig {
-                name: "election".to_string(),
-                markets: vec![
-                    "presidential-winner".to_string(),
-                    "electoral-count".to_string(),
-                ],
-            },
-        ]);
+        let config = create_config_with_correlation(vec![CorrelationGroupConfig {
+            name: "election".to_string(),
+            markets: vec![
+                "presidential-winner".to_string(),
+                "electoral-count".to_string(),
+            ],
+        }]);
 
         let risk_manager = RiskManager::new(config);
 
         // Existing position of $1000 in a correlated market
-        let state = MockStateProvider::new()
-            .with_position("electoral-count", "token-ec", dec!(2000), dec!(0.5));
+        let state = MockStateProvider::new().with_position(
+            "electoral-count",
+            "token-ec",
+            dec!(2000),
+            dec!(0.5),
+        );
 
         // New order of $500 in another correlated market (total $1500 < $3000 limit)
         let signal = create_test_signal("presidential-winner", "token-pw", dec!(500), dec!(0.5));
@@ -884,21 +1025,23 @@ mod tests {
     #[tokio::test]
     #[ignore = "correlation limit validation not yet integrated into RiskManager.validate()"]
     async fn test_reduce_order_when_correlation_limit_exceeded() {
-        let config = create_config_with_correlation(vec![
-            CorrelationGroupConfig {
-                name: "election".to_string(),
-                markets: vec![
-                    "presidential-winner".to_string(),
-                    "electoral-count".to_string(),
-                ],
-            },
-        ]);
+        let config = create_config_with_correlation(vec![CorrelationGroupConfig {
+            name: "election".to_string(),
+            markets: vec![
+                "presidential-winner".to_string(),
+                "electoral-count".to_string(),
+            ],
+        }]);
 
         let risk_manager = RiskManager::new(config);
 
         // Existing position of $2800 in a correlated market (5600 contracts * $0.5)
-        let state = MockStateProvider::new()
-            .with_position("electoral-count", "token-ec", dec!(5600), dec!(0.5));
+        let state = MockStateProvider::new().with_position(
+            "electoral-count",
+            "token-ec",
+            dec!(5600),
+            dec!(0.5),
+        );
 
         // New order of $500 (max order size) would exceed $3000 correlated limit
         // Current correlated exposure: $2800, new order: $500, total: $3300 > $3000
@@ -924,21 +1067,23 @@ mod tests {
     #[tokio::test]
     #[ignore = "correlation limit validation not yet integrated into RiskManager.validate()"]
     async fn test_reject_order_when_at_correlation_limit() {
-        let config = create_config_with_correlation(vec![
-            CorrelationGroupConfig {
-                name: "election".to_string(),
-                markets: vec![
-                    "presidential-winner".to_string(),
-                    "electoral-count".to_string(),
-                ],
-            },
-        ]);
+        let config = create_config_with_correlation(vec![CorrelationGroupConfig {
+            name: "election".to_string(),
+            markets: vec![
+                "presidential-winner".to_string(),
+                "electoral-count".to_string(),
+            ],
+        }]);
 
         let risk_manager = RiskManager::new(config);
 
         // Existing position exactly at the $3000 limit
-        let state = MockStateProvider::new()
-            .with_position("electoral-count", "token-ec", dec!(6000), dec!(0.5));
+        let state = MockStateProvider::new().with_position(
+            "electoral-count",
+            "token-ec",
+            dec!(6000),
+            dec!(0.5),
+        );
 
         // Any new order should be rejected
         let signal = create_test_signal("presidential-winner", "token-pw", dec!(100), dec!(0.5));
@@ -956,12 +1101,10 @@ mod tests {
     #[tokio::test]
     #[ignore = "correlation limit validation not yet integrated into RiskManager.validate()"]
     async fn test_pattern_matching_in_correlation_groups() {
-        let config = create_config_with_correlation(vec![
-            CorrelationGroupConfig {
-                name: "swing-states".to_string(),
-                markets: vec!["swing-state-*".to_string()],
-            },
-        ]);
+        let config = create_config_with_correlation(vec![CorrelationGroupConfig {
+            name: "swing-states".to_string(),
+            markets: vec!["swing-state-*".to_string()],
+        }]);
 
         let risk_manager = RiskManager::new(config);
 
@@ -985,22 +1128,24 @@ mod tests {
 
     #[tokio::test]
     async fn test_correlation_disabled() {
-        let mut config = create_config_with_correlation(vec![
-            CorrelationGroupConfig {
-                name: "election".to_string(),
-                markets: vec![
-                    "presidential-winner".to_string(),
-                    "electoral-count".to_string(),
-                ],
-            },
-        ]);
+        let mut config = create_config_with_correlation(vec![CorrelationGroupConfig {
+            name: "election".to_string(),
+            markets: vec![
+                "presidential-winner".to_string(),
+                "electoral-count".to_string(),
+            ],
+        }]);
         config.correlation.enabled = false;
 
         let risk_manager = RiskManager::new(config);
 
         // Large position that would exceed limit if correlation was enabled
-        let state = MockStateProvider::new()
-            .with_position("electoral-count", "token-ec", dec!(10000), dec!(0.5));
+        let state = MockStateProvider::new().with_position(
+            "electoral-count",
+            "token-ec",
+            dec!(10000),
+            dec!(0.5),
+        );
 
         let signal = create_test_signal("presidential-winner", "token-pw", dec!(500), dec!(0.5));
 
@@ -1011,16 +1156,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_correlation_tracker_access() {
-        let config = create_config_with_correlation(vec![
-            CorrelationGroupConfig {
-                name: "test".to_string(),
-                markets: vec!["market-a".to_string()],
-            },
-        ]);
+        let config = create_config_with_correlation(vec![CorrelationGroupConfig {
+            name: "test".to_string(),
+            markets: vec!["market-a".to_string()],
+        }]);
 
         let risk_manager = RiskManager::new(config);
 
         assert!(risk_manager.correlation_tracker.is_enabled());
         assert_eq!(risk_manager.correlation_tracker.max_correlated_exposure(), dec!(3000));
+        assert!(risk_manager.correlation_tracker().is_enabled());
+        assert_eq!(
+            risk_manager.correlation_tracker().max_correlated_exposure(),
+            dec!(3000)
+        );
     }
 }

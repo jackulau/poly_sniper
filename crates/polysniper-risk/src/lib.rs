@@ -9,6 +9,7 @@ pub mod drawdown;
 pub mod kelly;
 pub mod time_rules;
 pub mod validator;
+pub mod var;
 pub mod volatility;
 
 pub use control::*;
@@ -18,4 +19,5 @@ pub use drawdown::{DrawdownCalculator, DrawdownStatus};
 pub use kelly::{KellyCalculator, KellyResult, TradeOutcome};
 pub use time_rules::{TimeRuleEngine, TimeRuleResult};
 pub use validator::RiskManager;
+pub use var::VaRCalculator;
 pub use volatility::VolatilityCalculator;

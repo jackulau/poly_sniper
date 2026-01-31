@@ -73,6 +73,9 @@ pub enum RiskError {
 
     #[error("Correlated exposure limit exceeded: {0}")]
     CorrelatedExposureExceeded(String),
+
+    #[error("VaR limit exceeded: {0}")]
+    VaRLimitExceeded(String),
 }
 
 /// Execution errors
