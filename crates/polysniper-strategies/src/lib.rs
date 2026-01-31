@@ -25,15 +25,12 @@ pub mod sentiment_strategy;
 pub mod target_price;
 pub mod vpin;
 pub mod whale_detector;
-pub mod whale_detector;
 pub mod whale_strategy;
 
 pub use arbitrage::{ArbitrageConfig, ArbitrageStrategy};
 pub use cross_asset::{AssetCorrelation, CorrelationType, CrossAssetConfig, CrossAssetStrategy};
 pub use ensemble::{EnsembleError, EnsembleOrchestrator};
 pub mod thompson_sampling;
-
-pub use arbitrage::{ArbitrageConfig, ArbitrageStrategy};
 pub use calibration::{
     BrierDecomposition, CalibrationAnalyzer, CalibrationAssessment, CalibrationBin,
     CalibrationMetrics, ReliabilityPoint,
@@ -74,12 +71,10 @@ pub use whale_detector::{
 pub use microstructure_strategy::{
     ImpactAdjustmentConfig, MicrostructureStrategy, MicrostructureStrategyConfig, ToxicityAction,
     VpinTradingConfig, WhaleTradingConfig,
+};
 pub use news_velocity::{
     AccelerationConfig, DecelerationConfig, NewsVelocityStrategy, NewsVelocityStrategyConfig,
     VelocityMarketMapping,
 };
 pub use thompson_sampling::{ArmState, MultiArmedBandit, ThompsonSampler};
-pub use whale_detector::{
-    LargeOrder, OrderbookSnapshot, WhaleActivity, WhaleActivityType, WhaleConfig, WhaleDetector,
-};
 pub use whale_strategy::{WhaleStrategy, WhaleStrategyConfig};

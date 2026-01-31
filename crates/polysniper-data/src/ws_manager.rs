@@ -1,8 +1,4 @@
 //! WebSocket manager for CLOB real-time data with connection warmup
-//! WebSocket manager for CLOB real-time data
-//!
-//! Optimized for low-latency message processing with configurable options
-//! for TCP_NODELAY, compression, and priority-based message handling.
 
 use futures::{SinkExt, StreamExt};
 use polysniper_core::{
@@ -83,16 +79,6 @@ impl Default for ConnectionConfig {
         }
     }
 }
-use std::time::Duration;
-use tokio::sync::{broadcast, RwLock};
-use tokio::time::{interval, timeout};
-use tokio_tungstenite::{connect_async_with_config, tungstenite::protocol::WebSocketConfig, tungstenite::Message};
-use tracing::{debug, error, info, warn};
-
-const RECONNECT_DELAY: Duration = Duration::from_secs(1);
-const PING_INTERVAL: Duration = Duration::from_secs(30);
-const MESSAGE_TIMEOUT: Duration = Duration::from_secs(60);
-const DEFAULT_BUFFER_SIZE: usize = 65536;
 
 /// WebSocket message types from CLOB
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,31 +156,6 @@ enum PingCommand {
 }
 
 /// WebSocket manager for CLOB data with connection warmup
-/// Configuration for WebSocket latency optimizations
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WsManagerConfig {
-    /// Enable WebSocket compression (disabled by default as it adds CPU overhead)
-    pub enable_compression: bool,
-    /// Enable TCP_NODELAY to disable Nagle's algorithm (reduces latency)
-    pub tcp_nodelay: bool,
-    /// Receive buffer size in bytes
-    pub buffer_size: usize,
-    /// High-priority token subscriptions (processed first)
-    pub priority_subscriptions: Vec<String>,
-}
-
-impl Default for WsManagerConfig {
-    fn default() -> Self {
-        Self {
-            enable_compression: false,
-            tcp_nodelay: true,
-            buffer_size: DEFAULT_BUFFER_SIZE,
-            priority_subscriptions: Vec::new(),
-        }
-    }
-}
-
-/// WebSocket manager for CLOB data
 pub struct WsManager {
     ws_url: String,
     event_tx: broadcast::Sender<SystemEvent>,
@@ -204,28 +165,20 @@ pub struct WsManager {
     config: ConnectionConfig,
     reconnect_attempts: AtomicU32,
     health: Arc<ConnectionHealth>,
-    config: WsManagerConfig,
 }
 
 impl WsManager {
     /// Create a new WebSocket manager with default configuration
     pub fn new(ws_url: String, event_tx: broadcast::Sender<SystemEvent>) -> Self {
         Self::with_config(ws_url, event_tx, ConnectionConfig::default())
-        Self::with_config(ws_url, event_tx, WsManagerConfig::default())
     }
 
     /// Create a new WebSocket manager with custom configuration
     pub fn with_config(
         ws_url: String,
         event_tx: broadcast::Sender<SystemEvent>,
-        config: WsManagerConfig,
+        config: ConnectionConfig,
     ) -> Self {
-        info!(
-            tcp_nodelay = config.tcp_nodelay,
-            compression = config.enable_compression,
-            buffer_size = config.buffer_size,
-            "Creating WebSocket manager with latency optimizations"
-        );
         Self {
             ws_url,
             event_tx,
@@ -236,16 +189,6 @@ impl WsManager {
             reconnect_attempts: AtomicU32::new(0),
             health: Arc::new(ConnectionHealth::new()),
         }
-    }
-
-    /// Get the current configuration
-    pub fn config(&self) -> &WsManagerConfig {
-        &self.config
-    }
-
-    /// Check if a token is a priority subscription
-    pub fn is_priority_token(&self, token_id: &str) -> bool {
-        self.config.priority_subscriptions.contains(&token_id.to_string())
     }
 
     /// Check if connected
@@ -335,13 +278,7 @@ impl WsManager {
     async fn connect_and_listen(&self) -> Result<(), DataSourceError> {
         info!("Connecting to WebSocket: {}", self.ws_url);
 
-        // Configure WebSocket for low latency
-        let mut ws_config = WebSocketConfig::default();
-        ws_config.max_message_size = Some(16 * 1024 * 1024); // 16 MB
-        ws_config.max_frame_size = Some(4 * 1024 * 1024);    // 4 MB
-        ws_config.accept_unmasked_frames = false;
-
-        let (ws_stream, _) = connect_async_with_config(&self.ws_url, Some(ws_config), self.config.tcp_nodelay)
+        let (ws_stream, _) = connect_async(&self.ws_url)
             .await
             .map_err(|e| DataSourceError::ConnectionError(e.to_string()))?;
 

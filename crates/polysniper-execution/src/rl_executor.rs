@@ -536,6 +536,12 @@ impl RlEnhancedExecutor {
             } else {
                 None
             },
+            shortfall_bps: None,
+            shortfall_timing_delay_bps: None,
+            shortfall_market_impact_bps: None,
+            shortfall_spread_cost_bps: None,
+            shortfall_opportunity_cost_bps: None,
+            speed_adjustment: None,
         })
     }
 

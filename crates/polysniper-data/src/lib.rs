@@ -44,7 +44,6 @@ pub use feed_aggregator::FeedAggregator;
 pub use feed_types::{FeedConfig, FeedError, FeedItem, FeedSource, RssConfig, RssFeedConfig, TwitterConfig, TwitterQueryConfig};
 pub use gamma_client::GammaClient;
 pub use http_pool::{HttpPool, HttpPoolConfig, HttpPoolError, WarmupResult};
-pub use market_cache::MarketCache;
 pub use market_cache::{LargeOrder, MarketCache, OrderbookHistory, OrderbookSnapshot};
 pub use openrouter_client::{
     ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice, OpenRouterClient,
@@ -64,8 +63,6 @@ pub use rss_client::RssClient;
 pub use twitter_client::TwitterClient;
 pub use webhook_server::WebhookServer;
 pub use ws_manager::{ConnectionConfig, WsManager};
-pub use ws_manager::{WsManager, WsManagerConfig};
-pub use ws_manager::WsManager;
 pub use news_velocity::{
     ArticleTimestamp, KeywordTracking, NewsCategory, NewsVelocityConfig, NewsVelocityTracker,
     VelocityMetrics, VelocityWindows,

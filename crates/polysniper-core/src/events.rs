@@ -63,6 +63,30 @@ pub enum SystemEvent {
 
     /// Microstructure analysis events (VPIN, whale detection, market impact)
     Microstructure(MicrostructureEvent),
+
+    /// Smart money signal detected from Polymarket activity
+    SmartMoneySignal(SmartMoneySignalEvent),
+
+    /// Volume anomaly detected
+    VolumeAnomalyDetected(VolumeAnomalyEvent),
+
+    /// Comment activity spike detected
+    CommentActivitySpike(CommentActivityEvent),
+
+    /// Crypto price update from external market
+    CryptoPriceUpdate(CryptoPriceUpdateEvent),
+
+    /// Correlation regime changed
+    CorrelationRegimeChange(CorrelationRegimeChangeEvent),
+
+    /// News velocity signal from RSS/news monitoring
+    NewsVelocitySignal(NewsVelocitySignalEvent),
+
+    /// External price update from other prediction markets
+    ExternalPriceUpdate(ExternalPriceUpdateEvent),
+
+    /// Prediction arbitrage opportunity detected
+    PredictionArbitrageDetected(PredictionArbitrageDetectedEvent),
 }
 
 impl SystemEvent {
@@ -88,6 +112,14 @@ impl SystemEvent {
             SystemEvent::GasPriceUpdate(_) => "gas_price_update",
             SystemEvent::OrderReplaced(_) => "order_replaced",
             SystemEvent::Microstructure(e) => e.event_type(),
+            SystemEvent::SmartMoneySignal(_) => "smart_money_signal",
+            SystemEvent::VolumeAnomalyDetected(_) => "volume_anomaly_detected",
+            SystemEvent::CommentActivitySpike(_) => "comment_activity_spike",
+            SystemEvent::CryptoPriceUpdate(_) => "crypto_price_update",
+            SystemEvent::CorrelationRegimeChange(_) => "correlation_regime_change",
+            SystemEvent::NewsVelocitySignal(_) => "news_velocity_signal",
+            SystemEvent::ExternalPriceUpdate(_) => "external_price_update",
+            SystemEvent::PredictionArbitrageDetected(_) => "prediction_arbitrage_detected",
         }
     }
 
@@ -113,6 +145,14 @@ impl SystemEvent {
             SystemEvent::GasPriceUpdate(e) => e.timestamp,
             SystemEvent::OrderReplaced(e) => e.timestamp,
             SystemEvent::Microstructure(e) => e.timestamp(),
+            SystemEvent::SmartMoneySignal(e) => e.timestamp,
+            SystemEvent::VolumeAnomalyDetected(e) => e.timestamp,
+            SystemEvent::CommentActivitySpike(e) => e.timestamp,
+            SystemEvent::CryptoPriceUpdate(e) => e.timestamp,
+            SystemEvent::CorrelationRegimeChange(e) => e.timestamp,
+            SystemEvent::NewsVelocitySignal(e) => e.timestamp,
+            SystemEvent::ExternalPriceUpdate(e) => e.timestamp,
+            SystemEvent::PredictionArbitrageDetected(e) => e.timestamp,
         }
     }
 
@@ -138,6 +178,99 @@ impl SystemEvent {
             SystemEvent::GasPriceUpdate(_) => None,
             SystemEvent::OrderReplaced(e) => Some(&e.market_id),
             SystemEvent::Microstructure(e) => e.market_id(),
+            SystemEvent::SmartMoneySignal(e) => Some(&e.market_id),
+            SystemEvent::VolumeAnomalyDetected(e) => Some(&e.market_id),
+            SystemEvent::CommentActivitySpike(e) => Some(&e.market_id),
+            SystemEvent::CryptoPriceUpdate(_) => None,
+            SystemEvent::CorrelationRegimeChange(_) => None,
+            SystemEvent::NewsVelocitySignal(e) => e.market_ids.first(),
+            SystemEvent::ExternalPriceUpdate(e) => e.polymarket_mapping.as_ref(),
+            SystemEvent::PredictionArbitrageDetected(e) => Some(&e.polymarket_id),
+        }
+    }
+}
+
+// ============================================================================
+// News Velocity Events
+// ============================================================================
+
+/// Direction of news velocity change
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VelocityDirection {
+    /// Coverage increasing rapidly (breaking news)
+    Accelerating,
+    /// Coverage decreasing (story fading)
+    Decelerating,
+    /// Normal/stable coverage
+    Stable,
+}
+
+impl VelocityDirection {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VelocityDirection::Accelerating => "accelerating",
+            VelocityDirection::Decelerating => "decelerating",
+            VelocityDirection::Stable => "stable",
+        }
+    }
+}
+
+impl std::fmt::Display for VelocityDirection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// News velocity signal event from RSS/news monitoring
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewsVelocitySignalEvent {
+    /// Keyword that triggered this signal
+    pub keyword: String,
+    /// Market IDs mapped to this keyword
+    pub market_ids: Vec<MarketId>,
+    /// Direction of velocity change
+    pub direction: VelocityDirection,
+    /// Current velocity (articles per hour)
+    pub current_velocity: Decimal,
+    /// Historical baseline velocity
+    pub baseline_velocity: Decimal,
+    /// Acceleration factor (current / baseline)
+    pub acceleration: Decimal,
+    /// Number of articles in the last hour
+    pub article_count_1h: u32,
+    /// Number of articles in the last 24 hours
+    pub article_count_24h: u32,
+    /// Sample headlines for context
+    pub sample_headlines: Vec<String>,
+    /// When the signal was generated
+    pub timestamp: DateTime<Utc>,
+}
+
+impl NewsVelocitySignalEvent {
+    /// Create a new news velocity signal event
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        keyword: String,
+        market_ids: Vec<MarketId>,
+        direction: VelocityDirection,
+        current_velocity: Decimal,
+        baseline_velocity: Decimal,
+        acceleration: Decimal,
+        article_count_1h: u32,
+        article_count_24h: u32,
+        sample_headlines: Vec<String>,
+    ) -> Self {
+        Self {
+            keyword,
+            market_ids,
+            direction,
+            current_velocity,
+            baseline_velocity,
+            acceleration,
+            article_count_1h,
+            article_count_24h,
+            sample_headlines,
+            timestamp: Utc::now(),
         }
     }
 }
@@ -1031,4 +1164,254 @@ impl MicrostructureSignalEvent {
             MicrostructureSignalType::Unfavorable | MicrostructureSignalType::HighToxicity
         )
     }
+}
+
+// ============================================================================
+// Polymarket Activity Events
+// ============================================================================
+
+/// Type of trader action detected
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TraderAction {
+    /// Buying into a position
+    Buy,
+    /// Selling out of a position
+    Sell,
+    /// Opening a new position
+    NewPosition,
+    /// Closing an existing position
+    ClosePosition,
+}
+
+/// Smart money signal event from Polymarket activity monitoring
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartMoneySignalEvent {
+    /// Market ID
+    pub market_id: MarketId,
+    /// Token ID
+    pub token_id: TokenId,
+    /// Trader's address
+    pub trader_address: String,
+    /// Trader's username if available
+    pub trader_username: Option<String>,
+    /// Trader's leaderboard rank
+    pub trader_rank: u32,
+    /// Trader's total profit/PnL
+    pub trader_profit: Decimal,
+    /// Action taken by the trader
+    pub action: TraderAction,
+    /// Outcome being traded
+    pub outcome: crate::types::Outcome,
+    /// Size of the position in USD
+    pub size_usd: Decimal,
+    /// When the signal was generated
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Volume anomaly detected event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VolumeAnomalyEvent {
+    /// Market ID
+    pub market_id: MarketId,
+    /// Current volume in USD
+    pub current_volume: Decimal,
+    /// Average volume over lookback period
+    pub avg_volume: Decimal,
+    /// Ratio of current to average volume
+    pub volume_ratio: Decimal,
+    /// Number of trades in the period
+    pub trade_count: u32,
+    /// Net flow direction: positive = more buying, negative = more selling
+    pub net_flow: Option<Decimal>,
+    /// When the anomaly was detected
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Comment activity spike event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommentActivityEvent {
+    /// Market ID
+    pub market_id: MarketId,
+    /// Number of comments in the period
+    pub comment_count: u32,
+    /// Comments per hour velocity
+    pub comment_velocity: Decimal,
+    /// Sentiment hint extracted from recent comments
+    pub sentiment_hint: Option<String>,
+    /// When the spike was detected
+    pub timestamp: DateTime<Utc>,
+}
+
+// ============================================================================
+// Cross-Asset Signal Events
+// ============================================================================
+
+/// Crypto price update from external market
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CryptoPriceUpdateEvent {
+    /// Crypto symbol (e.g., "ETH", "BTC", "SOL")
+    pub symbol: String,
+    /// Current price in USD
+    pub price: Decimal,
+    /// 1-hour price change percentage
+    pub price_change_1h: Decimal,
+    /// 24-hour price change percentage
+    pub price_change_24h: Decimal,
+    /// 24-hour trading volume in USD
+    pub volume_24h: Decimal,
+    /// When this update occurred
+    pub timestamp: DateTime<Utc>,
+}
+
+impl CryptoPriceUpdateEvent {
+    /// Create a new crypto price update event
+    pub fn new(
+        symbol: String,
+        price: Decimal,
+        price_change_1h: Decimal,
+        price_change_24h: Decimal,
+        volume_24h: Decimal,
+    ) -> Self {
+        Self {
+            symbol,
+            price,
+            price_change_1h,
+            price_change_24h,
+            volume_24h,
+            timestamp: Utc::now(),
+        }
+    }
+
+    /// Check if this represents a significant price movement
+    pub fn is_significant_move(&self, threshold_pct: Decimal) -> bool {
+        self.price_change_1h.abs() >= threshold_pct
+    }
+}
+
+// ============================================================================
+// Correlation Regime Events
+// ============================================================================
+
+use crate::types::CorrelationRegime;
+
+/// Correlation regime change event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrelationRegimeChangeEvent {
+    /// Previous regime
+    pub old_regime: CorrelationRegime,
+    /// New regime
+    pub new_regime: CorrelationRegime,
+    /// Current average correlation across position pairs
+    pub avg_correlation: Decimal,
+    /// Short-term average correlation
+    pub short_term_avg: Option<Decimal>,
+    /// Long-term average correlation
+    pub long_term_avg: Option<Decimal>,
+    /// New exposure limit multiplier
+    pub limit_multiplier: Decimal,
+    /// When the change occurred
+    pub timestamp: DateTime<Utc>,
+}
+
+impl CorrelationRegimeChangeEvent {
+    /// Create a new correlation regime change event
+    pub fn new(
+        old_regime: CorrelationRegime,
+        new_regime: CorrelationRegime,
+        avg_correlation: Decimal,
+        short_term_avg: Option<Decimal>,
+        long_term_avg: Option<Decimal>,
+        limit_multiplier: Decimal,
+    ) -> Self {
+        Self {
+            old_regime,
+            new_regime,
+            avg_correlation,
+            short_term_avg,
+            long_term_avg,
+            limit_multiplier,
+            timestamp: Utc::now(),
+        }
+    }
+}
+
+// ============================================================================
+// External Prediction Market Events
+// ============================================================================
+
+/// External prediction market platforms
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ExternalPlatform {
+    /// Metaculus - Expert forecaster community
+    Metaculus,
+    /// PredictIt - US-based prediction market
+    PredictIt,
+    /// Kalshi - Regulated US prediction market
+    Kalshi,
+}
+
+impl ExternalPlatform {
+    /// Get the platform name as a string
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ExternalPlatform::Metaculus => "Metaculus",
+            ExternalPlatform::PredictIt => "PredictIt",
+            ExternalPlatform::Kalshi => "Kalshi",
+        }
+    }
+}
+
+impl std::fmt::Display for ExternalPlatform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// Type of arbitrage opportunity
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ArbitrageType {
+    /// True risk-free arbitrage (rare, requires positions on both platforms)
+    HardArbitrage,
+    /// Soft arbitrage - edge suggesting mispricing
+    SoftArbitrage,
+    /// Convergence opportunity - expect prices to converge
+    Convergence,
+}
+
+/// External price update from other prediction markets
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternalPriceUpdateEvent {
+    /// External platform source
+    pub platform: ExternalPlatform,
+    /// External market/question ID on that platform
+    pub external_id: String,
+    /// YES probability from external platform
+    pub yes_price: Decimal,
+    /// Polymarket market ID mapping (if known)
+    pub polymarket_mapping: Option<MarketId>,
+    /// When this update occurred
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Prediction arbitrage opportunity detected
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PredictionArbitrageDetectedEvent {
+    /// Polymarket market ID
+    pub polymarket_id: MarketId,
+    /// External platform with the discrepancy
+    pub platform: ExternalPlatform,
+    /// External market/question ID
+    pub external_id: String,
+    /// Polymarket YES price
+    pub polymarket_price: Decimal,
+    /// External platform YES price
+    pub external_price: Decimal,
+    /// Edge percentage (positive = Polymarket underpriced)
+    pub edge_pct: Decimal,
+    /// Type of arbitrage opportunity
+    pub arbitrage_type: ArbitrageType,
+    /// Recommended side to trade
+    pub recommended_side: Side,
+    /// When the opportunity was detected
+    pub timestamp: DateTime<Utc>,
 }

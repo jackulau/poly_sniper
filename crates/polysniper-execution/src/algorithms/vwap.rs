@@ -237,6 +237,7 @@ impl VwapExecutor {
             config,
             active_orders: Arc::new(RwLock::new(HashMap::new())),
             shortfall_tracker: Arc::new(ShortfallTracker::new()),
+            participation_adapter: None,
         }
     }
 
@@ -246,6 +247,7 @@ impl VwapExecutor {
             config,
             active_orders: Arc::new(RwLock::new(HashMap::new())),
             shortfall_tracker,
+            participation_adapter: None,
         }
     }
 
@@ -267,6 +269,7 @@ impl VwapExecutor {
         Self {
             config,
             active_orders: Arc::new(RwLock::new(HashMap::new())),
+            shortfall_tracker: Arc::new(ShortfallTracker::new()),
             participation_adapter: Some(adapter),
         }
     }
@@ -401,9 +404,8 @@ impl VwapExecutor {
             decision_time = %signal.timestamp,
             num_slices = self.config.num_slices,
             profile = ?self.config.volume_profile,
-            "Started VWAP execution with shortfall tracking"
             adaptive_participation = self.config.adaptive_participation,
-            "Started VWAP execution"
+            "Started VWAP execution with shortfall tracking"
         );
 
         parent_id

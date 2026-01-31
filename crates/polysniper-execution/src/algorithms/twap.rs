@@ -121,6 +121,7 @@ impl TwapExecutor {
             config,
             active_orders: Arc::new(RwLock::new(HashMap::new())),
             shortfall_tracker: Arc::new(ShortfallTracker::new()),
+            participation_adapter: None,
         }
     }
 
@@ -130,6 +131,7 @@ impl TwapExecutor {
             config,
             active_orders: Arc::new(RwLock::new(HashMap::new())),
             shortfall_tracker,
+            participation_adapter: None,
         }
     }
 
@@ -151,6 +153,7 @@ impl TwapExecutor {
         Self {
             config,
             active_orders: Arc::new(RwLock::new(HashMap::new())),
+            shortfall_tracker: Arc::new(ShortfallTracker::new()),
             participation_adapter: Some(adapter),
         }
     }
@@ -288,9 +291,8 @@ impl TwapExecutor {
             reference_price = %reference_price,
             decision_time = %signal.timestamp,
             num_slices = self.config.num_slices,
-            "Started TWAP execution with shortfall tracking"
             adaptive = self.config.adaptive_participation,
-            "Started TWAP execution"
+            "Started TWAP execution with shortfall tracking"
         );
 
         parent_id

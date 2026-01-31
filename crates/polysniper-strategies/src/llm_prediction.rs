@@ -224,8 +224,10 @@ impl LlmPredictionStrategy {
             enabled: Arc::new(AtomicBool::new(enabled)),
             openrouter_client,
             prediction_cache: Arc::new(RwLock::new(HashMap::new())),
+            ensemble_cache: Arc::new(RwLock::new(HashMap::new())),
             last_analysis_time: Arc::new(RwLock::new(Utc::now() - chrono::Duration::hours(1))),
             feature_store,
+            ensemble_orchestrator,
         })
     }
 
@@ -262,7 +264,7 @@ impl LlmPredictionStrategy {
             ensemble_cache: Arc::new(RwLock::new(HashMap::new())),
             last_analysis_time: Arc::new(RwLock::new(Utc::now() - chrono::Duration::hours(1))),
             feature_store: Some(feature_store),
-            ensemble_orchestrator,
+            ensemble_orchestrator: None,
         })
     }
 
@@ -429,6 +431,8 @@ Analyze this market and provide your prediction."#,
         }
 
         enhanced
+    }
+
     /// Create market context from Market and price
     fn create_market_context(&self, market: &Market, yes_price: Decimal) -> MarketContext {
         let time_remaining = market.end_date.map(|end_date| {

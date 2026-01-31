@@ -589,7 +589,7 @@ impl Strategy for PredictionArbitrageStrategy {
                                 e.polymarket_price,
                                 e.external_price,
                                 e.edge_pct,
-                                e.external_platform,
+                                e.platform,
                             )
                         } else {
                             None

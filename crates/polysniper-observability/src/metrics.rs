@@ -261,6 +261,8 @@ lazy_static! {
             "Ratio of unique tokens to total events in batch (lower = more dedup)"
         ).buckets(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]),
         &["event_type"]
+    ).unwrap();
+
     // Fill probability metrics
     pub static ref FILL_PROBABILITY_ESTIMATE: HistogramVec = HistogramVec::new(
         HistogramOpts::new(
@@ -463,6 +465,7 @@ pub fn register_metrics() {
         .ok();
     REGISTRY
         .register(Box::new(BATCH_DEDUPLICATION_RATIO.clone()))
+        .ok();
     // Fill probability metrics
     REGISTRY
         .register(Box::new(FILL_PROBABILITY_ESTIMATE.clone()))
@@ -478,6 +481,7 @@ pub fn register_metrics() {
         .ok();
     REGISTRY
         .register(Box::new(FILL_PROBABILITY_ACCURACY.clone()))
+        .ok();
     // Shortfall metrics
     REGISTRY
         .register(Box::new(EXECUTION_SHORTFALL_BPS.clone()))
@@ -499,6 +503,7 @@ pub fn register_metrics() {
         .ok();
     REGISTRY
         .register(Box::new(SHORTFALL_SPEED_ADJUSTMENTS.clone()))
+        .ok();
     // Volume and participation metrics
     REGISTRY
         .register(Box::new(VOLUME_RATIO_CURRENT.clone()))

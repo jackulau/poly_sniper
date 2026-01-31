@@ -39,7 +39,6 @@ pub use order_manager::OrderManager;
 pub use price_level_analyzer::{PriceLevelAnalyzer, PriceLevelStats};
 pub use queue_estimator::{FillProbability, ProbabilityComponents, ProbabilityMethod, QueueEstimator, QueuePositionState};
 pub use participation_adapter::{ParticipationAdapter, ParticipationConfig, ParticipationRate};
-pub use queue_estimator::QueueEstimator;
 pub use shortfall_tracker::{
     ShortfallComponents, ShortfallConfig, ShortfallRecord, ShortfallSummary, ShortfallTracker,
 };
