@@ -506,6 +506,24 @@ pub struct QueuePosition {
     pub fill_probability_5min: f64,
 }
 
+/// Configuration for price level analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriceLevelConfig {
+    /// How far back to track price level statistics (in seconds)
+    pub history_window_secs: u64,
+    /// Minimum number of touches required for valid statistics
+    pub min_touches_for_stats: u32,
+}
+
+impl Default for PriceLevelConfig {
+    fn default() -> Self {
+        Self {
+            history_window_secs: 3600, // 1 hour
+            min_touches_for_stats: 5,
+        }
+    }
+}
+
 /// Persistence configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistenceConfig {

@@ -10,6 +10,7 @@ pub mod gas_optimizer;
 pub mod gas_tracker;
 pub mod order_builder;
 pub mod order_manager;
+pub mod price_level_analyzer;
 pub mod queue_estimator;
 pub mod submitter;
 
@@ -24,5 +25,6 @@ pub use gas_optimizer::GasOptimizer;
 pub use gas_tracker::GasTracker;
 pub use order_builder::OrderBuilder;
 pub use order_manager::OrderManager;
-pub use queue_estimator::QueueEstimator;
+pub use price_level_analyzer::{PriceLevelAnalyzer, PriceLevelStats};
+pub use queue_estimator::{FillProbability, ProbabilityComponents, ProbabilityMethod, QueueEstimator, QueuePositionState};
 pub use submitter::OrderSubmitter;
