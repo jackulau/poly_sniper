@@ -12,6 +12,7 @@ use polysniper_core::{
 use polysniper_data::{
     ChatCompletionRequest, ChatMessage, OpenRouterClient, OpenRouterConfig, ResponseFormat,
 };
+use polysniper_ml::{FeatureStore, FeatureStoreConfig};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
@@ -66,6 +67,9 @@ pub struct LlmPredictionConfig {
     /// Override the default system prompt
     #[serde(default)]
     pub system_prompt_override: Option<String>,
+    /// Whether to use the feature store for enhanced prompts
+    #[serde(default)]
+    pub use_feature_store: bool,
 }
 
 fn default_max_tokens() -> u32 {
@@ -100,6 +104,7 @@ impl Default for LlmPredictionConfig {
             tags: Vec::new(),
             keywords: Vec::new(),
             system_prompt_override: None,
+            use_feature_store: false,
         }
     }
 }
@@ -132,11 +137,60 @@ pub struct LlmPredictionStrategy {
     openrouter_client: OpenRouterClient,
     prediction_cache: Arc<RwLock<HashMap<MarketId, CachedPrediction>>>,
     last_analysis_time: Arc<RwLock<DateTime<Utc>>>,
+    feature_store: Option<Arc<FeatureStore>>,
 }
 
 impl LlmPredictionStrategy {
     /// Create a new LLM prediction strategy
     pub fn new(config: LlmPredictionConfig) -> Result<Self, StrategyError> {
+        // Get API key from environment
+        let api_key = std::env::var(&config.api_key_env).map_err(|_| {
+            StrategyError::ConfigError(format!(
+                "Environment variable {} not set",
+                config.api_key_env
+            ))
+        })?;
+
+        let openrouter_config = OpenRouterConfig {
+            api_key,
+            default_model: config.model.clone(),
+            ..Default::default()
+        };
+
+        let openrouter_client = OpenRouterClient::new(openrouter_config)
+            .map_err(|e| StrategyError::InitializationError(e.to_string()))?;
+
+        let enabled = config.enabled;
+        let use_feature_store = config.use_feature_store;
+
+        // Initialize feature store if configured
+        let feature_store = if use_feature_store {
+            let fs_config = FeatureStoreConfig::default();
+            let fs = FeatureStore::new(fs_config);
+            // Register all standard feature computers
+            let mut registry = polysniper_ml::FeatureRegistry::new();
+            polysniper_ml::register_all_computers(&mut registry);
+            Some(Arc::new(fs))
+        } else {
+            None
+        };
+
+        Ok(Self {
+            id: "llm_prediction".to_string(),
+            config,
+            enabled: Arc::new(AtomicBool::new(enabled)),
+            openrouter_client,
+            prediction_cache: Arc::new(RwLock::new(HashMap::new())),
+            last_analysis_time: Arc::new(RwLock::new(Utc::now() - chrono::Duration::hours(1))),
+            feature_store,
+        })
+    }
+
+    /// Create a new LLM prediction strategy with a pre-configured feature store
+    pub fn with_feature_store(
+        config: LlmPredictionConfig,
+        feature_store: Arc<FeatureStore>,
+    ) -> Result<Self, StrategyError> {
         // Get API key from environment
         let api_key = std::env::var(&config.api_key_env).map_err(|_| {
             StrategyError::ConfigError(format!(
@@ -163,6 +217,7 @@ impl LlmPredictionStrategy {
             openrouter_client,
             prediction_cache: Arc::new(RwLock::new(HashMap::new())),
             last_analysis_time: Arc::new(RwLock::new(Utc::now() - chrono::Duration::hours(1))),
+            feature_store: Some(feature_store),
         })
     }
 
@@ -244,6 +299,86 @@ Analyze this market and provide your prediction."#,
             liquidity = market.liquidity.round(),
             time_remaining = time_remaining,
         )
+    }
+
+    /// Build an enhanced user prompt with feature store data
+    async fn build_enhanced_prompt(
+        &self,
+        market: &Market,
+        yes_price: Decimal,
+        state: &dyn StateProvider,
+    ) -> String {
+        // Start with the base prompt
+        let base_prompt = self.build_user_prompt(market, yes_price);
+
+        // If no feature store, return base prompt
+        let feature_store = match &self.feature_store {
+            Some(fs) => fs,
+            None => return base_prompt,
+        };
+
+        // Try to get features
+        let features = match feature_store
+            .get_current_features(
+                &market.condition_id,
+                &["orderbook", "sentiment", "temporal", "price_history"],
+                state,
+            )
+            .await
+        {
+            Ok(f) => f,
+            Err(e) => {
+                debug!(error = %e, "Failed to get features, using base prompt");
+                return base_prompt;
+            }
+        };
+
+        // Build enhanced prompt with feature data
+        let mut enhanced = base_prompt;
+
+        // Add orderbook features if available
+        if let Some(orderbook) = features.get("orderbook") {
+            enhanced.push_str("\n\nOrderbook Analysis:");
+            if let Some(imbalance) = orderbook.value.get("imbalance_ratio") {
+                enhanced.push_str(&format!("\n- Order imbalance: {}", imbalance));
+            }
+            if let Some(spread) = orderbook.value.get("spread") {
+                enhanced.push_str(&format!("\n- Spread: {}", spread));
+            }
+            if let Some(bid_depth) = orderbook.value.get("bid_depth") {
+                enhanced.push_str(&format!("\n- Bid depth: ${}", bid_depth));
+            }
+            if let Some(ask_depth) = orderbook.value.get("ask_depth") {
+                enhanced.push_str(&format!("\n- Ask depth: ${}", ask_depth));
+            }
+        }
+
+        // Add sentiment features if available
+        if let Some(sentiment) = features.get("sentiment") {
+            enhanced.push_str("\n\nSentiment Analysis:");
+            if let Some(score) = sentiment.value.get("sentiment_score") {
+                enhanced.push_str(&format!("\n- Sentiment score: {}", score));
+            }
+            if let Some(uncertainty) = sentiment.value.get("uncertainty_count") {
+                enhanced.push_str(&format!("\n- Uncertainty indicators: {}", uncertainty));
+            }
+        }
+
+        // Add price history features if available
+        if let Some(price_hist) = features.get("price_history") {
+            enhanced.push_str("\n\nPrice History Analysis:");
+            if let Some(volatility) = price_hist.value.get("volatility") {
+                enhanced.push_str(&format!("\n- Recent volatility: {}", volatility));
+            }
+            if let Some(momentum) = price_hist.value.get("momentum") {
+                enhanced.push_str(&format!("\n- Momentum: {}", momentum));
+            }
+            if let Some(trend) = price_hist.value.get("trend_strength") {
+                enhanced.push_str(&format!("\n- Trend strength: {}", trend));
+            }
+        }
+
+        enhanced
     }
 
     /// Parse the LLM response into a prediction
@@ -368,9 +503,13 @@ Analyze this market and provide your prediction."#,
             }
         };
 
-        // Build prompts
+        // Build prompts (use enhanced prompt if feature store is available)
         let system_prompt = self.build_system_prompt();
-        let user_prompt = self.build_user_prompt(market, current_price);
+        let user_prompt = if self.feature_store.is_some() {
+            self.build_enhanced_prompt(market, current_price, state).await
+        } else {
+            self.build_user_prompt(market, current_price)
+        };
 
         // Create chat completion request
         let request = ChatCompletionRequest {

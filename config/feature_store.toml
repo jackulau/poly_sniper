@@ -1,0 +1,44 @@
+# Feature Store Configuration
+# Provides consistent feature computation for ML models across backtesting and live trading
+
+[feature_store]
+# Whether the feature store is enabled
+enabled = true
+
+# Cache TTL in seconds for computed features
+cache_ttl_secs = 60
+
+# Whether to persist features for backtesting
+persistence_enabled = true
+
+# Path to the features database
+db_path = "data/features.db"
+
+# Market feature configuration
+[feature_store.features.market]
+enabled = true
+version = "1.0"
+
+# Orderbook feature configuration
+[feature_store.features.orderbook]
+enabled = true
+version = "1.0"
+
+# Sentiment feature configuration (derived from market metadata)
+[feature_store.features.sentiment]
+enabled = true
+version = "1.0"
+
+# Temporal feature configuration
+[feature_store.features.temporal]
+enabled = true
+version = "1.0"
+
+# Price history feature configuration
+[feature_store.features.price_history]
+enabled = true
+version = "1.0"
+# Window size in seconds for price history analysis
+window_secs = 3600
+# Minimum samples required for feature computation
+min_samples = 10
