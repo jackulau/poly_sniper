@@ -60,6 +60,9 @@ pub enum SystemEvent {
 
     /// Order replaced
     OrderReplaced(OrderReplacedEvent),
+
+    /// Crypto price update from external market
+    CryptoPriceUpdate(CryptoPriceUpdateEvent),
 }
 
 impl SystemEvent {
@@ -84,6 +87,7 @@ impl SystemEvent {
             SystemEvent::ResubmitTriggered(_) => "resubmit_triggered",
             SystemEvent::GasPriceUpdate(_) => "gas_price_update",
             SystemEvent::OrderReplaced(_) => "order_replaced",
+            SystemEvent::CryptoPriceUpdate(_) => "crypto_price_update",
         }
     }
 
@@ -108,6 +112,7 @@ impl SystemEvent {
             SystemEvent::ResubmitTriggered(e) => e.timestamp,
             SystemEvent::GasPriceUpdate(e) => e.timestamp,
             SystemEvent::OrderReplaced(e) => e.timestamp,
+            SystemEvent::CryptoPriceUpdate(e) => e.timestamp,
         }
     }
 
@@ -132,6 +137,7 @@ impl SystemEvent {
             SystemEvent::ResubmitTriggered(e) => Some(&e.market_id),
             SystemEvent::GasPriceUpdate(_) => None,
             SystemEvent::OrderReplaced(e) => Some(&e.market_id),
+            SystemEvent::CryptoPriceUpdate(_) => None,
         }
     }
 }
@@ -527,4 +533,46 @@ pub struct OrderReplacedEvent {
     pub reason: String,
     /// When the replacement occurred
     pub timestamp: DateTime<Utc>,
+}
+
+/// Crypto price update event from external markets
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CryptoPriceUpdateEvent {
+    /// Crypto symbol (e.g., "ETH", "BTC", "SOL")
+    pub symbol: String,
+    /// Current price in USD
+    pub price: Decimal,
+    /// 1-hour price change percentage
+    pub price_change_1h: Decimal,
+    /// 24-hour price change percentage
+    pub price_change_24h: Decimal,
+    /// 24-hour trading volume in USD
+    pub volume_24h: Decimal,
+    /// When this update occurred
+    pub timestamp: DateTime<Utc>,
+}
+
+impl CryptoPriceUpdateEvent {
+    /// Create a new crypto price update event
+    pub fn new(
+        symbol: String,
+        price: Decimal,
+        price_change_1h: Decimal,
+        price_change_24h: Decimal,
+        volume_24h: Decimal,
+    ) -> Self {
+        Self {
+            symbol,
+            price,
+            price_change_1h,
+            price_change_24h,
+            volume_24h,
+            timestamp: Utc::now(),
+        }
+    }
+
+    /// Check if this represents a significant price movement
+    pub fn is_significant_move(&self, threshold_pct: Decimal) -> bool {
+        self.price_change_1h.abs() >= threshold_pct
+    }
 }
