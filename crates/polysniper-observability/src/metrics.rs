@@ -170,6 +170,45 @@ lazy_static! {
         "polysniper_config_reloads_total",
         "Total successful config reloads"
     ).unwrap();
+
+    // Implementation shortfall metrics
+    pub static ref EXECUTION_SHORTFALL_BPS: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "polysniper_execution_shortfall_bps",
+            "Implementation shortfall in basis points"
+        ).buckets(vec![-100.0, -50.0, -20.0, -10.0, 0.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0]),
+        &["algorithm", "side"]
+    ).unwrap();
+
+    pub static ref SHORTFALL_TIMING_DELAY_BPS: GaugeVec = GaugeVec::new(
+        Opts::new("polysniper_shortfall_timing_delay_bps", "Shortfall timing delay component in basis points"),
+        &["algorithm"]
+    ).unwrap();
+
+    pub static ref SHORTFALL_MARKET_IMPACT_BPS: GaugeVec = GaugeVec::new(
+        Opts::new("polysniper_shortfall_market_impact_bps", "Shortfall market impact component in basis points"),
+        &["algorithm"]
+    ).unwrap();
+
+    pub static ref SHORTFALL_SPREAD_COST_BPS: GaugeVec = GaugeVec::new(
+        Opts::new("polysniper_shortfall_spread_cost_bps", "Shortfall spread cost component in basis points"),
+        &["algorithm"]
+    ).unwrap();
+
+    pub static ref SHORTFALL_OPPORTUNITY_COST_BPS: GaugeVec = GaugeVec::new(
+        Opts::new("polysniper_shortfall_opportunity_cost_bps", "Shortfall opportunity cost component in basis points"),
+        &["algorithm"]
+    ).unwrap();
+
+    pub static ref SHORTFALL_EXECUTIONS: IntCounterVec = IntCounterVec::new(
+        Opts::new("polysniper_shortfall_executions_total", "Total executions tracked for shortfall"),
+        &["algorithm", "outcome"]
+    ).unwrap();
+
+    pub static ref SHORTFALL_SPEED_ADJUSTMENTS: IntCounterVec = IntCounterVec::new(
+        Opts::new("polysniper_shortfall_speed_adjustments_total", "Speed adjustments made due to shortfall"),
+        &["direction"]
+    ).unwrap();
 }
 
 /// Register all metrics with the registry
@@ -237,6 +276,29 @@ pub fn register_metrics() {
 
     // Config metrics
     REGISTRY.register(Box::new(CONFIG_RELOADS.clone())).ok();
+
+    // Shortfall metrics
+    REGISTRY
+        .register(Box::new(EXECUTION_SHORTFALL_BPS.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(SHORTFALL_TIMING_DELAY_BPS.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(SHORTFALL_MARKET_IMPACT_BPS.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(SHORTFALL_SPREAD_COST_BPS.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(SHORTFALL_OPPORTUNITY_COST_BPS.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(SHORTFALL_EXECUTIONS.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(SHORTFALL_SPEED_ADJUSTMENTS.clone()))
+        .ok();
 }
 
 /// Get metrics as Prometheus text format
@@ -373,6 +435,49 @@ pub fn record_alert_failure(channel: &str) {
 /// Update uptime
 pub fn update_uptime(seconds: i64) {
     UPTIME_SECONDS.set(seconds);
+}
+
+/// Record implementation shortfall
+pub fn record_shortfall(algorithm: &str, side: &str, shortfall_bps: f64) {
+    EXECUTION_SHORTFALL_BPS
+        .with_label_values(&[algorithm, side])
+        .observe(shortfall_bps);
+}
+
+/// Update shortfall component metrics
+pub fn update_shortfall_components(
+    algorithm: &str,
+    timing_delay_bps: f64,
+    market_impact_bps: f64,
+    spread_cost_bps: f64,
+    opportunity_cost_bps: f64,
+) {
+    SHORTFALL_TIMING_DELAY_BPS
+        .with_label_values(&[algorithm])
+        .set(timing_delay_bps);
+    SHORTFALL_MARKET_IMPACT_BPS
+        .with_label_values(&[algorithm])
+        .set(market_impact_bps);
+    SHORTFALL_SPREAD_COST_BPS
+        .with_label_values(&[algorithm])
+        .set(spread_cost_bps);
+    SHORTFALL_OPPORTUNITY_COST_BPS
+        .with_label_values(&[algorithm])
+        .set(opportunity_cost_bps);
+}
+
+/// Record shortfall execution completion
+pub fn record_shortfall_execution(algorithm: &str, outcome: &str) {
+    SHORTFALL_EXECUTIONS
+        .with_label_values(&[algorithm, outcome])
+        .inc();
+}
+
+/// Record speed adjustment due to shortfall
+pub fn record_speed_adjustment(direction: &str) {
+    SHORTFALL_SPEED_ADJUSTMENTS
+        .with_label_values(&[direction])
+        .inc();
 }
 
 /// Configuration for metrics

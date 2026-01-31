@@ -89,6 +89,24 @@ pub struct ExecutionStats {
     pub estimated_completion: DateTime<Utc>,
     /// Actual completion time (if complete)
     pub completed_at: Option<DateTime<Utc>>,
+    /// Implementation shortfall in basis points
+    #[serde(default)]
+    pub shortfall_bps: Option<Decimal>,
+    /// Shortfall timing delay component in basis points
+    #[serde(default)]
+    pub shortfall_timing_delay_bps: Option<Decimal>,
+    /// Shortfall market impact component in basis points
+    #[serde(default)]
+    pub shortfall_market_impact_bps: Option<Decimal>,
+    /// Shortfall spread cost component in basis points
+    #[serde(default)]
+    pub shortfall_spread_cost_bps: Option<Decimal>,
+    /// Shortfall opportunity cost component in basis points
+    #[serde(default)]
+    pub shortfall_opportunity_cost_bps: Option<Decimal>,
+    /// Current speed adjustment recommendation from shortfall tracking
+    #[serde(default)]
+    pub speed_adjustment: Option<Decimal>,
 }
 
 impl ExecutionStats {
