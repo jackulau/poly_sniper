@@ -822,6 +822,8 @@ mod tests {
     use polysniper_core::{
         CorrelationConfig, CorrelationGroupConfig, Market, OrderType, Orderbook, Outcome, Position,
         Priority, Side,
+        CorrelationConfig, CorrelationGroupConfig, Market, Orderbook, Outcome, Position, Priority,
+        Side, OrderType, TimeRulesConfig, VolatilityConfig,
     };
     use rust_decimal_macros::dec;
     use std::collections::HashMap;

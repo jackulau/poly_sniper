@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 polysniper-core = { path = "../polysniper-core" }
+polysniper-ml = { path = "../polysniper-ml" }
 
 tokio.workspace = true
 async-trait.workspace = true

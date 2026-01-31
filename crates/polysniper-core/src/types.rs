@@ -1418,6 +1418,84 @@ impl Default for ParticipationConfig {
             urgency_boost: Decimal::new(5, 2),        // 0.05 = 5%
             time_pressure_boost: Decimal::new(13, 1), // 1.3 = 30% boost
             time_pressure_threshold: Decimal::new(2, 1), // 0.2 = 20%
+/// Operating mode for the RL execution agent
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RlExecutionMode {
+    /// Training mode - higher exploration, learning enabled
+    #[default]
+    Training,
+    /// Production mode - low exploration, learning enabled
+    Production,
+    /// Evaluation mode - no exploration, no learning
+    Evaluation,
+}
+
+/// Configuration for RL-based execution timing optimization
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RlExecutionConfig {
+    /// Whether RL execution enhancement is enabled
+    pub enabled: bool,
+    /// Operating mode
+    pub mode: RlExecutionMode,
+    /// Learning rate (alpha) - how quickly to update Q-values
+    pub alpha: f64,
+    /// Discount factor (gamma) - importance of future rewards
+    pub gamma: f64,
+    /// Initial exploration rate (epsilon)
+    pub epsilon: f64,
+    /// Minimum exploration rate
+    pub epsilon_min: f64,
+    /// Exploration decay rate per episode
+    pub epsilon_decay: f64,
+    /// Experience replay buffer capacity
+    pub replay_buffer_capacity: usize,
+    /// Batch size for replay buffer sampling
+    pub replay_batch_size: usize,
+    /// How often to perform batch updates (in steps)
+    pub update_frequency: usize,
+    /// Decision interval in milliseconds
+    pub decision_interval_ms: u64,
+    /// Minimum order size per decision
+    pub min_order_size: Decimal,
+    /// Maximum time to wait without progress (seconds)
+    pub max_wait_secs: u64,
+    /// Path to save/load the RL model
+    pub model_path: String,
+    /// How often to save the model (seconds)
+    pub save_interval_secs: u64,
+    /// Reward weight for fill rate
+    pub reward_fill_weight: f64,
+    /// Reward weight for slippage penalty
+    pub reward_slippage_weight: f64,
+    /// Reward weight for time penalty
+    pub reward_time_weight: f64,
+    /// Reward weight for market impact penalty
+    pub reward_impact_weight: f64,
+}
+
+impl Default for RlExecutionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            mode: RlExecutionMode::Training,
+            alpha: 0.1,
+            gamma: 0.99,
+            epsilon: 0.3,
+            epsilon_min: 0.05,
+            epsilon_decay: 0.995,
+            replay_buffer_capacity: 10000,
+            replay_batch_size: 32,
+            update_frequency: 10,
+            decision_interval_ms: 1000,
+            min_order_size: Decimal::new(10, 0),
+            max_wait_secs: 30,
+            model_path: "data/rl_execution_model.json".to_string(),
+            save_interval_secs: 300,
+            reward_fill_weight: 10.0,
+            reward_slippage_weight: 100.0,
+            reward_time_weight: 50.0,
+            reward_impact_weight: 50.0,
         }
     }
 }

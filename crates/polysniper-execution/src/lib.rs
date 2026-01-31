@@ -1,6 +1,6 @@
 //! Polysniper Execution
 //!
-//! Order building, submission to CLOB, and execution algorithms (TWAP/VWAP).
+//! Order building, submission to CLOB, and execution algorithms (TWAP/VWAP/RL-enhanced).
 
 pub mod algorithms;
 pub mod depth_analyzer;
@@ -16,6 +16,7 @@ pub mod price_level_analyzer;
 pub mod participation_adapter;
 pub mod queue_estimator;
 pub mod shortfall_tracker;
+pub mod rl_executor;
 pub mod submitter;
 pub mod volume_monitor;
 
@@ -42,5 +43,6 @@ pub use queue_estimator::QueueEstimator;
 pub use shortfall_tracker::{
     ShortfallComponents, ShortfallConfig, ShortfallRecord, ShortfallSummary, ShortfallTracker,
 };
+pub use rl_executor::{ExecutionContext, RlEnhancedExecutor, RlExecutorConfig};
 pub use submitter::OrderSubmitter;
 pub use volume_monitor::{VolumeMonitor, VolumeMonitorConfig, VolumeObservation};
