@@ -10,6 +10,7 @@ pub mod ml_processor;
 pub mod multi_leg;
 pub mod new_market;
 pub mod orderbook_imbalance;
+pub mod prediction_arbitrage;
 pub mod price_spike;
 pub mod resolution_exit;
 pub mod sentiment_analyzer;
@@ -26,6 +27,10 @@ pub use multi_leg::{
 };
 pub use new_market::{NewMarketConfig, NewMarketStrategy};
 pub use orderbook_imbalance::{OrderbookImbalanceConfig, OrderbookImbalanceStrategy};
+pub use prediction_arbitrage::{
+    ConvergenceConfig, PlatformWeights, PredictionArbitrageConfig, PredictionArbitrageStrategy,
+    SoftArbConfig,
+};
 pub use price_spike::{PriceSpikeConfig, PriceSpikeStrategy};
 pub use resolution_exit::ResolutionExitStrategy;
 pub use sentiment_analyzer::SentimentAnalyzer;

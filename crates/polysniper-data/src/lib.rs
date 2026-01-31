@@ -3,11 +3,13 @@
 //! Data ingestion layer for WebSocket and REST API clients.
 
 pub mod event_bus;
+pub mod external_markets;
 pub mod feed_aggregator;
 pub mod feed_types;
 pub mod gamma_client;
 pub mod market_cache;
 pub mod openrouter_client;
+pub mod prediction_aggregator;
 pub mod resolution_monitor;
 pub mod rss_client;
 pub mod twitter_client;
@@ -15,6 +17,11 @@ pub mod webhook_server;
 pub mod ws_manager;
 
 pub use event_bus::BroadcastEventBus;
+pub use external_markets::{
+    ExternalMarketError, ExternalMarketPrice, KalshiClient, KalshiConfig, KalshiEvent,
+    KalshiMarket, MetaculusClient, MetaculusConfig, MetaculusPrediction, Platform,
+    PredictItClient, PredictItConfig, PredictItContract, PredictItMarket,
+};
 pub use feed_aggregator::FeedAggregator;
 pub use feed_types::{FeedConfig, FeedError, FeedItem, FeedSource, RssConfig, RssFeedConfig, TwitterConfig, TwitterQueryConfig};
 pub use gamma_client::GammaClient;
@@ -22,6 +29,10 @@ pub use market_cache::MarketCache;
 pub use openrouter_client::{
     ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice, OpenRouterClient,
     OpenRouterConfig, ResponseFormat, ResponseMessage, Usage,
+};
+pub use prediction_aggregator::{
+    AggregatedPrice, ArbitrageOpportunity, ArbitrageType, MarketMapping, PlatformWeights,
+    PredictionAggregator, PredictionAggregatorConfig, Side,
 };
 pub use resolution_monitor::ResolutionMonitor;
 pub use rss_client::RssClient;
