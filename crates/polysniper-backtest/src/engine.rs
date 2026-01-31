@@ -10,6 +10,7 @@ use polysniper_core::{
     Market, MarketId, Orderbook, Position, StateProvider, Strategy, SystemEvent, TokenId,
     TradeSignal,
 };
+use polysniper_ml::{FeatureStore, FeatureValue};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::collections::HashMap;
@@ -22,6 +23,7 @@ pub struct BacktestEngine {
     config: BacktestConfig,
     data_loader: DataLoader,
     state: Arc<SimulatedState>,
+    feature_store: Option<Arc<FeatureStore>>,
 }
 
 impl BacktestEngine {
@@ -34,6 +36,7 @@ impl BacktestEngine {
             config,
             data_loader,
             state,
+            feature_store: None,
         })
     }
 
@@ -44,7 +47,43 @@ impl BacktestEngine {
             config,
             data_loader,
             state,
+            feature_store: None,
         }
+    }
+
+    /// Create a backtest engine with a feature store for point-in-time feature retrieval
+    pub async fn with_feature_store(
+        config: BacktestConfig,
+        db_path: &str,
+        feature_store: Arc<FeatureStore>,
+    ) -> Result<Self> {
+        let data_loader = DataLoader::new(db_path).await?;
+        let state = Arc::new(SimulatedState::new(config.initial_capital));
+
+        Ok(Self {
+            config,
+            data_loader,
+            state,
+            feature_store: Some(feature_store),
+        })
+    }
+
+    /// Get the feature store reference
+    pub fn feature_store(&self) -> Option<&Arc<FeatureStore>> {
+        self.feature_store.as_ref()
+    }
+
+    /// Get features at a specific point in time during backtesting
+    pub async fn get_features_at(
+        &self,
+        market_id: &str,
+        timestamp: DateTime<Utc>,
+        feature_names: &[&str],
+    ) -> Option<HashMap<String, FeatureValue>> {
+        let fs = self.feature_store.as_ref()?;
+        fs.get_features_at(market_id, timestamp, feature_names)
+            .await
+            .ok()
     }
 
     /// Run a backtest with a single strategy
