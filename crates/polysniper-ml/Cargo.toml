@@ -1,19 +1,22 @@
 [package]
-name = "polysniper-core"
+name = "polysniper-ml"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
+polysniper-core = { path = "../polysniper-core" }
+
 tokio.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
 thiserror.workspace = true
-chrono.workspace = true
+anyhow.workspace = true
 tracing.workspace = true
-notify = { version = "6.1", default-features = false, features = ["macos_kqueue"] }
+chrono.workspace = true
+rand.workspace = true
 
 [dev-dependencies]
-rust_decimal_macros.workspace = true
-tempfile = "3"
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

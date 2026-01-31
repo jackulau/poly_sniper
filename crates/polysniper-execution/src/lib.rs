@@ -1,6 +1,6 @@
 //! Polysniper Execution
 //!
-//! Order building, submission to CLOB, and execution algorithms (TWAP/VWAP).
+//! Order building, submission to CLOB, and execution algorithms (TWAP/VWAP/RL-enhanced).
 
 pub mod algorithms;
 pub mod depth_analyzer;
@@ -11,6 +11,7 @@ pub mod gas_tracker;
 pub mod order_builder;
 pub mod order_manager;
 pub mod queue_estimator;
+pub mod rl_executor;
 pub mod submitter;
 
 pub use algorithms::{
@@ -25,4 +26,5 @@ pub use gas_tracker::GasTracker;
 pub use order_builder::OrderBuilder;
 pub use order_manager::OrderManager;
 pub use queue_estimator::QueueEstimator;
+pub use rl_executor::{ExecutionContext, RlEnhancedExecutor, RlExecutorConfig};
 pub use submitter::OrderSubmitter;

@@ -35,7 +35,6 @@ pub struct RiskManager {
     /// Time-based rule engine
     time_rule_engine: TimeRuleEngine,
     /// Correlation tracker for correlated position limits
-    #[allow(dead_code)]
     correlation_tracker: CorrelationTracker,
 }
 
@@ -59,6 +58,11 @@ impl RiskManager {
     /// Get a reference to the time rule engine
     pub fn time_rule_engine(&self) -> &TimeRuleEngine {
         &self.time_rule_engine
+    }
+
+    /// Get a reference to the correlation tracker
+    pub fn correlation_tracker(&self) -> &CorrelationTracker {
+        &self.correlation_tracker
     }
 
     /// Check time rules for a signal and market
@@ -530,7 +534,7 @@ mod tests {
     use chrono::Utc;
     use polysniper_core::{
         CorrelationConfig, CorrelationGroupConfig, Market, Orderbook, Outcome, Position, Priority,
-        Side, OrderType,
+        Side, OrderType, TimeRulesConfig, VolatilityConfig,
     };
     use rust_decimal_macros::dec;
     use std::collections::HashMap;
@@ -644,6 +648,8 @@ mod tests {
             daily_loss_limit_usd: dec!(500),
             circuit_breaker_loss_usd: dec!(300),
             max_orders_per_minute: 60,
+            volatility: VolatilityConfig::default(),
+            time_rules: TimeRulesConfig::default(),
             correlation: CorrelationConfig {
                 enabled: true,
                 correlation_threshold: dec!(0.7),

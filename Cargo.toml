@@ -11,6 +11,7 @@ members = [
     "crates/polysniper-persistence",
     "crates/polysniper-backtest",
     "crates/polysniper-tui",
+    "crates/polysniper-ml",
 ]
 
 [workspace.package]
@@ -108,6 +109,7 @@ polysniper-observability = { path = "crates/polysniper-observability" }
 polysniper-persistence = { path = "crates/polysniper-persistence" }
 polysniper-tui = { path = "crates/polysniper-tui" }
 polysniper-backtest = { path = "crates/polysniper-backtest" }
+polysniper-ml = { path = "crates/polysniper-ml" }
 
 tokio.workspace = true
 tracing.workspace = true

@@ -1,0 +1,98 @@
+# Reinforcement Learning Execution Configuration
+#
+# This configuration controls the RL agent that learns optimal
+# order execution timing based on market microstructure.
+
+[rl_execution]
+# Whether RL execution enhancement is enabled
+enabled = true
+
+# Operating mode: training, production, or evaluation
+# - training: higher exploration (epsilon=0.3), learning enabled
+# - production: low exploration (epsilon=0.05), learning enabled
+# - evaluation: no exploration, no learning (for backtesting)
+mode = "training"
+
+[rl_execution.q_learning]
+# Learning rate (alpha) - how quickly to update Q-values
+# Higher values mean faster learning but potentially less stable
+alpha = 0.1
+
+# Discount factor (gamma) - importance of future rewards
+# Values close to 1.0 prioritize long-term rewards
+gamma = 0.99
+
+# Initial exploration rate (epsilon)
+# Probability of taking a random action vs the best known action
+epsilon = 0.3
+
+# Minimum exploration rate - epsilon won't decay below this
+epsilon_min = 0.05
+
+# Exploration decay rate per episode
+# After each episode, epsilon *= epsilon_decay
+epsilon_decay = 0.995
+
+[rl_execution.state]
+# Number of buckets for discretizing spread (used in Q-table key)
+spread_buckets = 5
+
+# Number of buckets for discretizing orderbook imbalance
+imbalance_buckets = 5
+
+# Number of buckets for discretizing time elapsed
+time_buckets = 6
+
+# Number of buckets for discretizing remaining size
+remaining_buckets = 5
+
+# Hour buckets (6 = 4-hour periods)
+hour_buckets = 6
+
+[rl_execution.reward]
+# Weight for fill rate reward component
+# Higher fill rates are rewarded
+fill_weight = 10.0
+
+# Weight for slippage penalty component
+# Deviation from mid price is penalized
+slippage_weight = 100.0
+
+# Weight for time penalty component
+# Taking too long is penalized (exponential after 90% of time window)
+time_weight = 50.0
+
+# Weight for market impact penalty component
+# Moving the price significantly is penalized
+impact_weight = 50.0
+
+[rl_execution.replay_buffer]
+# Maximum number of experiences to store
+capacity = 10000
+
+# Batch size for sampling during updates
+batch_size = 32
+
+# How often to update from replay buffer (in decision steps)
+update_frequency = 10
+
+# Minimum experiences before learning starts
+min_experiences = 100
+
+[rl_execution.execution]
+# Decision interval in milliseconds
+# How often the RL agent evaluates and potentially places orders
+decision_interval_ms = 1000
+
+# Minimum size to place per decision (USD or contracts depending on context)
+min_order_size = 10
+
+# Maximum time to wait without progress before forcing action (seconds)
+max_wait_secs = 30
+
+[rl_execution.persistence]
+# How often to save the model (seconds)
+save_interval_secs = 300
+
+# Path to save/load the RL model
+model_path = "data/rl_execution_model.json"
