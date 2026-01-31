@@ -43,6 +43,24 @@ min_size_multiplier = 0.25
 # Maximum size multiplier ceiling (e.g., 1.5 = 150% of normal size in low volatility)
 max_size_multiplier = 1.5
 
+# Kelly criterion position sizing
+# Optimizes position sizes based on historical edge and win rate
+[risk.kelly]
+# Whether Kelly criterion sizing is enabled
+enabled = true
+# Fractional Kelly multiplier (0.25 = quarter-Kelly, 0.5 = half-Kelly, 1.0 = full Kelly)
+# Half-Kelly is recommended for conservative sizing while still capturing most of the benefit
+fraction = 0.5
+# Number of recent trades to consider for edge calculation
+window_size = 100
+# Minimum number of trades required before Kelly sizing kicks in
+# Uses base sizing (1.0 multiplier) until this threshold is met
+min_trades = 20
+# Maximum position multiplier (caps Kelly sizing to avoid over-betting on positive edge)
+max_multiplier = 2.0
+# Minimum position multiplier (ensures some position even with negative or zero edge)
+min_multiplier = 0.25
+
 [execution]
 # Set to true to log orders without actually submitting
 dry_run = true

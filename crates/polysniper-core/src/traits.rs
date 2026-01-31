@@ -107,6 +107,12 @@ pub trait StateProvider: Send + Sync {
 
     /// Get daily P&L
     async fn get_daily_pnl(&self) -> Decimal;
+
+    /// Get recent trade outcomes for Kelly criterion calculation
+    ///
+    /// Returns a vector of (pnl, size_usd) tuples for recent trades.
+    /// The limit parameter specifies the maximum number of trades to return.
+    async fn get_trade_outcomes(&self, limit: usize) -> Vec<(Decimal, Decimal)>;
 }
 
 /// State manager trait for updating market state
