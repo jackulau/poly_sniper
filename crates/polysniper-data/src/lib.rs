@@ -18,7 +18,7 @@ pub use event_bus::BroadcastEventBus;
 pub use feed_aggregator::FeedAggregator;
 pub use feed_types::{FeedConfig, FeedError, FeedItem, FeedSource, RssConfig, RssFeedConfig, TwitterConfig, TwitterQueryConfig};
 pub use gamma_client::GammaClient;
-pub use market_cache::MarketCache;
+pub use market_cache::{LargeOrder, MarketCache, OrderbookHistory, OrderbookSnapshot};
 pub use openrouter_client::{
     ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice, OpenRouterClient,
     OpenRouterConfig, ResponseFormat, ResponseMessage, Usage,

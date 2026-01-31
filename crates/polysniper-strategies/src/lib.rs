@@ -15,6 +15,8 @@ pub mod resolution_exit;
 pub mod sentiment_analyzer;
 pub mod sentiment_strategy;
 pub mod target_price;
+pub mod whale_detector;
+pub mod whale_strategy;
 
 pub use arbitrage::{ArbitrageConfig, ArbitrageStrategy};
 pub use event_based::{EventBasedConfig, EventBasedStrategy};
@@ -31,3 +33,7 @@ pub use resolution_exit::ResolutionExitStrategy;
 pub use sentiment_analyzer::SentimentAnalyzer;
 pub use sentiment_strategy::{SentimentMarketMapping, SentimentStrategy, SentimentStrategyConfig};
 pub use target_price::{PriceTarget, TargetDirection, TargetPriceConfig, TargetPriceStrategy};
+pub use whale_detector::{
+    LargeOrder, OrderbookSnapshot, WhaleActivity, WhaleActivityType, WhaleConfig, WhaleDetector,
+};
+pub use whale_strategy::{WhaleStrategy, WhaleStrategyConfig};
