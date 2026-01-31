@@ -366,6 +366,223 @@ impl Strategy for PriceSpikeStrategy {
         Ok(signals)
     }
 
+    /// Optimized batch processing for price changes
+    ///
+    /// This method batches all price updates first, then checks for spikes on
+    /// affected tokens. This is more efficient than processing events one by one
+    /// because:
+    /// 1. Price history updates are batched (single write lock acquisition)
+    /// 2. Only the latest price per token is used for spike detection
+    /// 3. Cooldown checks are done after history update, not before
+    async fn process_batch(
+        &self,
+        events: &[SystemEvent],
+        state: &dyn StateProvider,
+    ) -> Result<Vec<TradeSignal>, StrategyError> {
+        // Read config once for the entire batch
+        let config = self.config.read().await;
+        let time_window_secs = config.time_window_secs;
+        let spike_threshold_pct = config.spike_threshold_pct;
+        let markets = config.markets.clone();
+        let min_liquidity_usd = config.min_liquidity_usd;
+        let trade_direction = config.trade_direction;
+        let order_size_usd = config.order_size_usd;
+        drop(config);
+
+        // Collect all price updates, keeping track of the latest per token
+        let mut latest_prices: HashMap<TokenId, (Decimal, String)> = HashMap::new();
+
+        for event in events {
+            match event {
+                SystemEvent::PriceChange(e) => {
+                    if self.should_monitor_market_sync(&markets, &e.market_id) {
+                        latest_prices.insert(e.token_id.clone(), (e.new_price, e.market_id.clone()));
+                    }
+                }
+                SystemEvent::OrderbookUpdate(e) => {
+                    if let Some(mid) = e.orderbook.mid_price() {
+                        if self.should_monitor_market_sync(&markets, &e.market_id) {
+                            latest_prices.insert(e.token_id.clone(), (mid, e.market_id.clone()));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if latest_prices.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Batch update price history for all affected tokens
+        let now = Utc::now();
+        let cutoff = now - chrono::Duration::seconds(time_window_secs as i64);
+
+        // Single write lock acquisition for batch history update
+        {
+            let mut history = self.price_history.write().await;
+            for (token_id, (price, _)) in &latest_prices {
+                let entries = history
+                    .entry(token_id.clone())
+                    .or_insert_with(VecDeque::new);
+
+                entries.push_back(PriceEntry {
+                    price: *price,
+                    timestamp: now,
+                });
+
+                // Remove old entries outside the window
+                while entries
+                    .front()
+                    .map(|e| e.timestamp < cutoff)
+                    .unwrap_or(false)
+                {
+                    entries.pop_front();
+                }
+            }
+        }
+
+        // Now check for spikes on all affected tokens
+        let mut signals = Vec::new();
+
+        for (token_id, (price, market_id)) in latest_prices {
+            // Check cooldown
+            if self.is_in_cooldown(&token_id).await {
+                debug!(token_id = %token_id, "Token in cooldown, skipping (batch)");
+                continue;
+            }
+
+            // Check for spike using the updated history
+            let spike_result = {
+                let history = self.price_history.read().await;
+                if let Some(entries) = history.get(&token_id) {
+                    if entries.len() >= 2 {
+                        if let Some(oldest) = entries.front() {
+                            let oldest_price = oldest.price;
+                            if !oldest_price.is_zero() {
+                                let change_pct =
+                                    ((price - oldest_price) / oldest_price) * dec!(100);
+                                let abs_change = change_pct.abs();
+                                if abs_change >= spike_threshold_pct {
+                                    Some((change_pct, change_pct > Decimal::ZERO))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+
+            if let Some((change_pct, is_spike_up)) = spike_result {
+                info!(
+                    token_id = %token_id,
+                    market_id = %market_id,
+                    change_pct = %change_pct,
+                    direction = if is_spike_up { "UP" } else { "DOWN" },
+                    "Price spike detected (batch)!"
+                );
+
+                // Get market info for outcome
+                let token_map = self.token_market_map.read().await;
+                let outcome = token_map
+                    .get(&token_id)
+                    .map(|(_, o)| *o)
+                    .unwrap_or(Outcome::Yes);
+                drop(token_map);
+
+                // Check liquidity
+                if let Some(market) = state.get_market(&market_id).await {
+                    if market.liquidity < min_liquidity_usd {
+                        warn!(
+                            market_id = %market_id,
+                            liquidity = %market.liquidity,
+                            min_required = %min_liquidity_usd,
+                            "Insufficient liquidity, skipping signal (batch)"
+                        );
+                        continue;
+                    }
+                }
+
+                // Determine trade side based on direction config
+                let side = match trade_direction {
+                    TradeDirection::Momentum => {
+                        if is_spike_up {
+                            Side::Buy
+                        } else {
+                            Side::Sell
+                        }
+                    }
+                    TradeDirection::Reversion => {
+                        if is_spike_up {
+                            Side::Sell
+                        } else {
+                            Side::Buy
+                        }
+                    }
+                };
+
+                let size = if price.is_zero() {
+                    Decimal::ZERO
+                } else {
+                    order_size_usd / price
+                };
+
+                let signal = TradeSignal {
+                    id: format!(
+                        "sig_spike_{}_{}_{}",
+                        token_id,
+                        Utc::now().timestamp_millis(),
+                        rand_suffix()
+                    ),
+                    strategy_id: self.id.clone(),
+                    market_id,
+                    token_id: token_id.clone(),
+                    outcome,
+                    side,
+                    price: Some(price),
+                    size,
+                    size_usd: order_size_usd,
+                    order_type: OrderType::Fok,
+                    priority: Priority::High,
+                    timestamp: Utc::now(),
+                    reason: format!(
+                        "Price spike {:.2}% {} detected, trading {:?} (batch)",
+                        change_pct,
+                        if is_spike_up { "UP" } else { "DOWN" },
+                        trade_direction
+                    ),
+                    metadata: serde_json::json!({
+                        "change_pct": change_pct.to_string(),
+                        "spike_direction": if is_spike_up { "up" } else { "down" },
+                        "trade_direction": format!("{:?}", trade_direction),
+                        "threshold_pct": spike_threshold_pct.to_string(),
+                        "batch_processed": true,
+                    }),
+                };
+
+                signals.push(signal);
+
+                // Set cooldown
+                self.set_cooldown(&token_id).await;
+            }
+        }
+
+        Ok(signals)
+    }
+
+    fn supports_batch(&self) -> bool {
+        true
+    }
+
     fn accepts_event(&self, event: &SystemEvent) -> bool {
         matches!(
             event,

@@ -2,6 +2,7 @@
 //!
 //! Core types, traits, and events for the Polysniper trading system.
 
+pub mod batch_processor;
 pub mod config_watcher;
 pub mod error;
 pub mod events;
@@ -13,6 +14,7 @@ pub mod traits;
 pub mod types;
 
 // Re-export commonly used types
+pub use batch_processor::*;
 pub use config_watcher::*;
 pub use error::*;
 pub use events::*;

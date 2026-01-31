@@ -170,6 +170,36 @@ lazy_static! {
         "polysniper_config_reloads_total",
         "Total successful config reloads"
     ).unwrap();
+
+    // Batch processing metrics
+    pub static ref BATCH_SIZE: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "polysniper_batch_size",
+            "Number of events per batch"
+        ).buckets(vec![1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 200.0]),
+        &["batch_type"]
+    ).unwrap();
+
+    pub static ref BATCH_PROCESSING_DURATION: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "polysniper_batch_processing_duration_seconds",
+            "Time to process a batch of events"
+        ).buckets(vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0]),
+        &["batch_type"]
+    ).unwrap();
+
+    pub static ref BATCHES_PROCESSED: IntCounterVec = IntCounterVec::new(
+        Opts::new("polysniper_batches_processed_total", "Total batches processed"),
+        &["batch_type", "trigger"]
+    ).unwrap();
+
+    pub static ref BATCH_DEDUPLICATION_RATIO: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "polysniper_batch_deduplication_ratio",
+            "Ratio of unique tokens to total events in batch (lower = more dedup)"
+        ).buckets(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]),
+        &["event_type"]
+    ).unwrap();
 }
 
 /// Register all metrics with the registry
@@ -237,6 +267,18 @@ pub fn register_metrics() {
 
     // Config metrics
     REGISTRY.register(Box::new(CONFIG_RELOADS.clone())).ok();
+
+    // Batch processing metrics
+    REGISTRY.register(Box::new(BATCH_SIZE.clone())).ok();
+    REGISTRY
+        .register(Box::new(BATCH_PROCESSING_DURATION.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(BATCHES_PROCESSED.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(BATCH_DEDUPLICATION_RATIO.clone()))
+        .ok();
 }
 
 /// Get metrics as Prometheus text format
@@ -373,6 +415,33 @@ pub fn record_alert_failure(channel: &str) {
 /// Update uptime
 pub fn update_uptime(seconds: i64) {
     UPTIME_SECONDS.set(seconds);
+}
+
+/// Record batch processing metrics
+pub fn record_batch_processing(batch_type: &str, batch_size: usize, duration_secs: f64) {
+    BATCH_SIZE
+        .with_label_values(&[batch_type])
+        .observe(batch_size as f64);
+    BATCH_PROCESSING_DURATION
+        .with_label_values(&[batch_type])
+        .observe(duration_secs);
+}
+
+/// Record a processed batch with trigger type
+pub fn record_batch_processed(batch_type: &str, trigger: &str) {
+    BATCHES_PROCESSED
+        .with_label_values(&[batch_type, trigger])
+        .inc();
+}
+
+/// Record batch deduplication efficiency
+pub fn record_batch_deduplication(event_type: &str, unique_count: usize, total_count: usize) {
+    if total_count > 0 {
+        let ratio = unique_count as f64 / total_count as f64;
+        BATCH_DEDUPLICATION_RATIO
+            .with_label_values(&[event_type])
+            .observe(ratio);
+    }
 }
 
 /// Configuration for metrics
