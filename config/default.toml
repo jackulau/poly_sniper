@@ -178,3 +178,45 @@ timeout_secs = 30
 # url = "https://example.com/feed.xml"
 # name = "Example Feed"
 # keywords = []  # Empty means all items
+
+# Latency Optimization Settings
+[latency]
+# Whether latency optimizations are enabled
+enabled = true
+
+# Connection pool configuration for maintaining warm connections
+[latency.connection_pool]
+# Number of CLOB REST connections to maintain
+clob_pool_size = 3
+# Number of Polygon RPC connections to maintain
+rpc_pool_size = 2
+# Connection establishment timeout in milliseconds
+connection_timeout_ms = 5000
+# Per-request timeout in milliseconds
+request_timeout_ms = 2000
+# Health check interval in seconds
+health_check_interval_secs = 30
+# Route requests to the fastest responding connection
+prefer_fastest = true
+
+# WebSocket latency optimizations
+[latency.websocket]
+# Enable WebSocket compression (disabled by default as it adds CPU overhead)
+enable_compression = false
+# Enable TCP_NODELAY to disable Nagle's algorithm (reduces latency)
+tcp_nodelay = true
+# Receive buffer size in bytes
+buffer_size = 65536
+# High-priority token subscriptions (processed first)
+priority_subscriptions = []
+
+# Fast execution configuration
+[latency.execution]
+# Submit to multiple endpoints in parallel (first response wins)
+parallel_submissions = true
+# Pre-sign common order templates for faster submission
+pre_sign_orders = true
+# Batch small orders together (not recommended for latency-critical orders)
+batch_small_orders = false
+# Use speculative nonce to avoid nonce lookup latency
+speculative_nonce = true

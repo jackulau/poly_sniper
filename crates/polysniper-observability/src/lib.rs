@@ -4,10 +4,16 @@
 
 pub mod alerting;
 pub mod health;
+pub mod latency_metrics;
 pub mod logging;
 pub mod metrics;
 
 pub use alerting::{AlertChannel, AlertManager, AlertingConfig, SlackConfig, TelegramConfig};
+pub use latency_metrics::{
+    register_latency_metrics, LatencyMetrics, LatencyStats, PipelineLatencies,
+    CONNECTION_ROUTING_LATENCY, END_TO_END_LATENCY, EVENT_TO_SIGNAL_LATENCY,
+    SIGNAL_TO_SUBMIT_LATENCY, SUBMIT_TO_CONFIRM_LATENCY, WS_MESSAGE_PARSE_LATENCY,
+};
 pub use logging::{init_default_logging, init_logging, LogFormat};
 pub use metrics::{
     gather_metrics,

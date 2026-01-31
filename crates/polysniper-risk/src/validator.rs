@@ -644,6 +644,8 @@ mod tests {
             daily_loss_limit_usd: dec!(500),
             circuit_breaker_loss_usd: dec!(300),
             max_orders_per_minute: 60,
+            volatility: Default::default(),
+            time_rules: Default::default(),
             correlation: CorrelationConfig {
                 enabled: true,
                 correlation_threshold: dec!(0.7),
@@ -834,7 +836,7 @@ mod tests {
 
         let risk_manager = RiskManager::new(config);
 
-        assert!(risk_manager.correlation_tracker().is_enabled());
-        assert_eq!(risk_manager.correlation_tracker().max_correlated_exposure(), dec!(3000));
+        assert!(risk_manager.correlation_tracker.is_enabled());
+        assert_eq!(risk_manager.correlation_tracker.max_correlated_exposure(), dec!(3000));
     }
 }
