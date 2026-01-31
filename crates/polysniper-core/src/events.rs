@@ -1,4 +1,5 @@
 use crate::types::{CorrelationRegime, Market, MarketId, Orderbook, Position, QueuePosition, TokenId, TradeSignal};
+use crate::types::{Market, MarketId, Orderbook, Position, QueuePosition, Side, TokenId, TradeSignal};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -65,6 +66,8 @@ pub enum SystemEvent {
     CorrelationRegimeChange(CorrelationRegimeChangeEvent),
     /// Crypto price update from external market
     CryptoPriceUpdate(CryptoPriceUpdateEvent),
+    /// Microstructure analysis events (VPIN, whale detection, market impact)
+    Microstructure(MicrostructureEvent),
 }
 
 impl SystemEvent {
@@ -91,6 +94,7 @@ impl SystemEvent {
             SystemEvent::OrderReplaced(_) => "order_replaced",
             SystemEvent::CorrelationRegimeChange(_) => "correlation_regime_change",
             SystemEvent::CryptoPriceUpdate(_) => "crypto_price_update",
+            SystemEvent::Microstructure(e) => e.event_type(),
         }
     }
 
@@ -117,6 +121,7 @@ impl SystemEvent {
             SystemEvent::OrderReplaced(e) => e.timestamp,
             SystemEvent::CorrelationRegimeChange(e) => e.timestamp,
             SystemEvent::CryptoPriceUpdate(e) => e.timestamp,
+            SystemEvent::Microstructure(e) => e.timestamp(),
         }
     }
 
@@ -143,6 +148,7 @@ impl SystemEvent {
             SystemEvent::OrderReplaced(e) => Some(&e.market_id),
             SystemEvent::CorrelationRegimeChange(_) => None,
             SystemEvent::CryptoPriceUpdate(_) => None,
+            SystemEvent::Microstructure(e) => e.market_id(),
         }
     }
 }
@@ -555,6 +561,336 @@ pub struct CorrelationRegimeChangeEvent {
     pub long_term_avg: Option<Decimal>,
     /// New exposure limit multiplier
     pub limit_multiplier: Decimal,
+// ============================================================================
+// Microstructure Events
+// ============================================================================
+
+/// Wrapper for all microstructure-related events (VPIN, whale detection, market impact)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MicrostructureEvent {
+    /// VPIN calculation update
+    VpinUpdate(VpinUpdateEvent),
+
+    /// Whale activity detected
+    WhaleDetected(WhaleDetectedEvent),
+
+    /// Market impact prediction
+    ImpactPrediction(ImpactPredictionEvent),
+
+    /// Toxicity level change (crossing threshold)
+    ToxicityChange(ToxicityChangeEvent),
+
+    /// Combined microstructure signal for strategy use
+    MicrostructureSignal(MicrostructureSignalEvent),
+}
+
+impl MicrostructureEvent {
+    /// Get the event type as a string
+    pub fn event_type(&self) -> &'static str {
+        match self {
+            MicrostructureEvent::VpinUpdate(_) => "vpin_update",
+            MicrostructureEvent::WhaleDetected(_) => "whale_detected",
+            MicrostructureEvent::ImpactPrediction(_) => "impact_prediction",
+            MicrostructureEvent::ToxicityChange(_) => "toxicity_change",
+            MicrostructureEvent::MicrostructureSignal(_) => "microstructure_signal",
+        }
+    }
+
+    /// Get the timestamp of the event
+    pub fn timestamp(&self) -> DateTime<Utc> {
+        match self {
+            MicrostructureEvent::VpinUpdate(e) => e.timestamp,
+            MicrostructureEvent::WhaleDetected(e) => e.timestamp,
+            MicrostructureEvent::ImpactPrediction(e) => e.timestamp,
+            MicrostructureEvent::ToxicityChange(e) => e.timestamp,
+            MicrostructureEvent::MicrostructureSignal(e) => e.timestamp,
+        }
+    }
+
+    /// Get the market ID if applicable
+    pub fn market_id(&self) -> Option<&MarketId> {
+        match self {
+            MicrostructureEvent::VpinUpdate(e) => Some(&e.market_id),
+            MicrostructureEvent::WhaleDetected(e) => Some(&e.market_id),
+            MicrostructureEvent::ImpactPrediction(e) => Some(&e.market_id),
+            MicrostructureEvent::ToxicityChange(e) => Some(&e.market_id),
+            MicrostructureEvent::MicrostructureSignal(e) => Some(&e.market_id),
+        }
+    }
+
+    /// Get the token ID if applicable
+    pub fn token_id(&self) -> Option<&TokenId> {
+        match self {
+            MicrostructureEvent::VpinUpdate(e) => Some(&e.token_id),
+            MicrostructureEvent::WhaleDetected(e) => Some(&e.token_id),
+            MicrostructureEvent::ImpactPrediction(e) => Some(&e.token_id),
+            MicrostructureEvent::ToxicityChange(e) => Some(&e.token_id),
+            MicrostructureEvent::MicrostructureSignal(e) => Some(&e.token_id),
+        }
+    }
+}
+
+/// Toxicity level classification based on VPIN value
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToxicityLevel {
+    /// VPIN < low_threshold (e.g., < 0.3) - favorable trading conditions
+    Low,
+    /// low_threshold <= VPIN < 0.5 - normal market conditions
+    Normal,
+    /// 0.5 <= VPIN < high_threshold - elevated informed trading activity
+    Elevated,
+    /// VPIN >= high_threshold (e.g., >= 0.7) - high informed trading probability
+    High,
+}
+
+impl std::fmt::Display for ToxicityLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToxicityLevel::Low => write!(f, "Low"),
+            ToxicityLevel::Normal => write!(f, "Normal"),
+            ToxicityLevel::Elevated => write!(f, "Elevated"),
+            ToxicityLevel::High => write!(f, "High"),
+        }
+    }
+}
+
+/// Type of whale alert
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WhaleAlertType {
+    /// Single large trade detected
+    SingleLargeTrade,
+    /// Cumulative activity threshold exceeded
+    CumulativeActivity,
+    /// Known whale address is active
+    KnownWhaleActive,
+    /// Whale changed trading direction
+    WhaleReversal,
+}
+
+/// Classification of a whale address based on trading patterns
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WhaleClassification {
+    /// Unknown pattern - not enough data
+    #[default]
+    Unknown,
+    /// Consistently buys - accumulating position
+    Accumulator,
+    /// Consistently sells - distributing position
+    Distributor,
+    /// Quick in/out trades - short-term trader
+    Flipper,
+    /// High win rate trader - informed trader
+    Informed,
+}
+
+/// Recommended action based on whale activity
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WhaleAction {
+    /// No action needed
+    None,
+    /// Reduce position by multiplier
+    ReducePosition {
+        /// Multiplier to apply to position size (e.g., 0.5 = reduce to 50%)
+        multiplier: Decimal,
+    },
+    /// Stop opening new trades
+    HaltNewTrades,
+    /// Follow the whale's direction
+    FollowWhale {
+        /// Direction to follow
+        direction: Side,
+    },
+    /// Generate alert only
+    Alert,
+}
+
+/// VPIN calculation update event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VpinUpdateEvent {
+    /// Token ID for this calculation
+    pub token_id: TokenId,
+    /// Market ID
+    pub market_id: MarketId,
+    /// VPIN value (0.0 to 1.0)
+    pub vpin: Decimal,
+    /// Toxicity level classification
+    pub toxicity_level: ToxicityLevel,
+    /// Percentage of volume from buy-initiated trades
+    pub buy_volume_pct: Decimal,
+    /// Percentage of volume from sell-initiated trades
+    pub sell_volume_pct: Decimal,
+    /// Number of buckets used in calculation
+    pub bucket_count: usize,
+    /// When this calculation was made
+    pub timestamp: DateTime<Utc>,
+}
+
+impl VpinUpdateEvent {
+    /// Create a new VPIN update event
+    pub fn new(
+        token_id: TokenId,
+        market_id: MarketId,
+        vpin: Decimal,
+        toxicity_level: ToxicityLevel,
+        buy_volume_pct: Decimal,
+        sell_volume_pct: Decimal,
+        bucket_count: usize,
+    ) -> Self {
+        Self {
+            token_id,
+            market_id,
+            vpin,
+            toxicity_level,
+            buy_volume_pct,
+            sell_volume_pct,
+            bucket_count,
+            timestamp: Utc::now(),
+        }
+    }
+}
+
+/// Whale activity detected event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WhaleDetectedEvent {
+    /// Token involved
+    pub token_id: TokenId,
+    /// Market involved
+    pub market_id: MarketId,
+    /// Type of whale alert
+    pub alert_type: WhaleAlertType,
+    /// Trade size in USD that triggered this alert
+    pub trade_size_usd: Decimal,
+    /// Cumulative size in USD if applicable
+    pub cumulative_size_usd: Option<Decimal>,
+    /// Side of the whale trade
+    pub side: Side,
+    /// Wallet address if available
+    pub address: Option<String>,
+    /// Classification of the whale if known
+    pub classification: Option<WhaleClassification>,
+    /// Recommended action
+    pub recommended_action: WhaleAction,
+    /// Confidence in the recommendation (0.0 to 1.0)
+    pub confidence: Decimal,
+    /// When the alert was generated
+    pub timestamp: DateTime<Utc>,
+}
+
+impl WhaleDetectedEvent {
+    /// Create a new whale detected event
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        token_id: TokenId,
+        market_id: MarketId,
+        alert_type: WhaleAlertType,
+        trade_size_usd: Decimal,
+        side: Side,
+        recommended_action: WhaleAction,
+        confidence: Decimal,
+    ) -> Self {
+        Self {
+            token_id,
+            market_id,
+            alert_type,
+            trade_size_usd,
+            cumulative_size_usd: None,
+            side,
+            address: None,
+            classification: None,
+            recommended_action,
+            confidence,
+            timestamp: Utc::now(),
+        }
+    }
+
+    /// Set cumulative size for aggregate whale detection
+    pub fn with_cumulative_size(mut self, cumulative_size_usd: Decimal) -> Self {
+        self.cumulative_size_usd = Some(cumulative_size_usd);
+        self
+    }
+
+    /// Set address of the whale
+    pub fn with_address(mut self, address: String) -> Self {
+        self.address = Some(address);
+        self
+    }
+
+    /// Set classification of the whale
+    pub fn with_classification(mut self, classification: WhaleClassification) -> Self {
+        self.classification = Some(classification);
+        self
+    }
+}
+
+/// Market impact prediction event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImpactPredictionEvent {
+    /// Token being traded
+    pub token_id: TokenId,
+    /// Market ID
+    pub market_id: MarketId,
+    /// Proposed trade size in USD
+    pub proposed_size_usd: Decimal,
+    /// Expected total impact in basis points
+    pub expected_impact_bps: Decimal,
+    /// Expected temporary impact in basis points
+    pub temporary_impact_bps: Decimal,
+    /// Expected permanent impact in basis points
+    pub permanent_impact_bps: Decimal,
+    /// Expected time for temporary impact to recover (seconds)
+    pub expected_recovery_secs: u64,
+    /// Confidence in the prediction (0.0 to 1.0)
+    pub model_confidence: Decimal,
+    /// When the prediction was made
+    pub timestamp: DateTime<Utc>,
+}
+
+impl ImpactPredictionEvent {
+    /// Create a new impact prediction event
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        token_id: TokenId,
+        market_id: MarketId,
+        proposed_size_usd: Decimal,
+        expected_impact_bps: Decimal,
+        temporary_impact_bps: Decimal,
+        permanent_impact_bps: Decimal,
+        expected_recovery_secs: u64,
+        model_confidence: Decimal,
+    ) -> Self {
+        Self {
+            token_id,
+            market_id,
+            proposed_size_usd,
+            expected_impact_bps,
+            temporary_impact_bps,
+            permanent_impact_bps,
+            expected_recovery_secs,
+            model_confidence,
+            timestamp: Utc::now(),
+        }
+    }
+}
+
+/// Toxicity level change event (crossing threshold)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToxicityChangeEvent {
+    /// Token ID
+    pub token_id: TokenId,
+    /// Market ID
+    pub market_id: MarketId,
+    /// Previous toxicity level
+    pub previous_level: ToxicityLevel,
+    /// New toxicity level
+    pub new_level: ToxicityLevel,
+    /// Current VPIN value
+    pub vpin: Decimal,
+    /// Reason for the trigger
+    pub trigger_reason: String,
     /// When the change occurred
     pub timestamp: DateTime<Utc>,
 }
@@ -611,6 +947,152 @@ impl CryptoPriceUpdateEvent {
             price_change_1h,
             price_change_24h,
             volume_24h,
+impl ToxicityChangeEvent {
+    /// Create a new toxicity change event
+    pub fn new(
+        token_id: TokenId,
+        market_id: MarketId,
+        previous_level: ToxicityLevel,
+        new_level: ToxicityLevel,
+        vpin: Decimal,
+        trigger_reason: String,
+    ) -> Self {
+        Self {
+            token_id,
+            market_id,
+            previous_level,
+            new_level,
+            vpin,
+            trigger_reason,
+            timestamp: Utc::now(),
+        }
+    }
+
+    /// Check if toxicity increased
+    pub fn is_increase(&self) -> bool {
+        self.level_to_score(self.new_level) > self.level_to_score(self.previous_level)
+    }
+
+    /// Check if toxicity decreased
+    pub fn is_decrease(&self) -> bool {
+        self.level_to_score(self.new_level) < self.level_to_score(self.previous_level)
+    }
+
+    fn level_to_score(&self, level: ToxicityLevel) -> u8 {
+        match level {
+            ToxicityLevel::Low => 0,
+            ToxicityLevel::Normal => 1,
+            ToxicityLevel::Elevated => 2,
+            ToxicityLevel::High => 3,
+        }
+    }
+}
+
+/// Type of combined microstructure signal
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MicrostructureSignalType {
+    /// Good conditions for trading
+    Favorable,
+    /// Poor conditions, reduce activity
+    Unfavorable,
+    /// Follow detected whale
+    WhaleFollow,
+    /// Avoid trading against whale
+    WhaleAvoid,
+    /// Elevated informed trading detected
+    HighToxicity,
+}
+
+/// Summary of whale activity for signal generation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WhaleActivitySummary {
+    /// Number of recent whale trades
+    pub recent_whale_trades: u32,
+    /// Net whale direction
+    pub net_whale_direction: Side,
+    /// Total whale volume in USD
+    pub total_whale_volume_usd: Decimal,
+}
+
+/// Components that contributed to a microstructure signal
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MicrostructureComponents {
+    /// VPIN value if available
+    pub vpin: Option<Decimal>,
+    /// Toxicity level if available
+    pub toxicity_level: Option<ToxicityLevel>,
+    /// Whale activity summary if available
+    pub whale_activity: Option<WhaleActivitySummary>,
+    /// Expected market impact in basis points if available
+    pub expected_impact_bps: Option<Decimal>,
+}
+
+/// Recommended action based on microstructure analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MicrostructureAction {
+    /// No action needed
+    None,
+    /// Reduce position/order size by multiplier
+    ReduceSize {
+        /// Multiplier to apply (e.g., 0.5 = reduce to 50%)
+        multiplier: Decimal,
+    },
+    /// Halt all trading temporarily
+    HaltTrading,
+    /// Increase position/order size (favorable conditions)
+    IncreaseSize {
+        /// Multiplier to apply (e.g., 1.5 = increase by 50%)
+        multiplier: Decimal,
+    },
+    /// Urgent action required
+    Urgent {
+        /// Reason for urgency
+        reason: String,
+    },
+}
+
+/// Combined microstructure signal for strategy use
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MicrostructureSignalEvent {
+    /// Token ID
+    pub token_id: TokenId,
+    /// Market ID
+    pub market_id: MarketId,
+    /// Type of signal
+    pub signal_type: MicrostructureSignalType,
+    /// Signal strength (-1.0 to 1.0, bearish to bullish)
+    pub strength: Decimal,
+    /// Confidence in the signal (0.0 to 1.0)
+    pub confidence: Decimal,
+    /// Components that contributed to this signal
+    pub components: MicrostructureComponents,
+    /// Recommended action
+    pub recommended_action: MicrostructureAction,
+    /// When the signal was generated
+    pub timestamp: DateTime<Utc>,
+}
+
+impl MicrostructureSignalEvent {
+    /// Create a new microstructure signal event
+    pub fn new(
+        token_id: TokenId,
+        market_id: MarketId,
+        signal_type: MicrostructureSignalType,
+        strength: Decimal,
+        confidence: Decimal,
+        components: MicrostructureComponents,
+        recommended_action: MicrostructureAction,
+    ) -> Self {
+        Self {
+            token_id,
+            market_id,
+            signal_type,
+            strength,
+            confidence,
+            components,
+            recommended_action,
             timestamp: Utc::now(),
         }
     }
@@ -618,5 +1100,16 @@ impl CryptoPriceUpdateEvent {
     /// Check if this represents a significant price movement
     pub fn is_significant_move(&self, threshold_pct: Decimal) -> bool {
         self.price_change_1h.abs() >= threshold_pct
+    /// Check if conditions are favorable for trading
+    pub fn is_favorable(&self) -> bool {
+        matches!(self.signal_type, MicrostructureSignalType::Favorable)
+    }
+
+    /// Check if conditions are unfavorable for trading
+    pub fn is_unfavorable(&self) -> bool {
+        matches!(
+            self.signal_type,
+            MicrostructureSignalType::Unfavorable | MicrostructureSignalType::HighToxicity
+        )
     }
 }
