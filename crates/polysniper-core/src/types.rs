@@ -753,21 +753,16 @@ impl Default for AdaptiveSizingConfig {
 }
 
 /// Order type for exit orders
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ExitOrderType {
     /// Fill-or-kill market order
+    #[default]
     Fok,
     /// Good-til-cancelled limit order
     Gtc,
     /// Market order (executed as FOK)
     Market,
-}
-
-impl Default for ExitOrderType {
-    fn default() -> Self {
-        ExitOrderType::Fok
-    }
 }
 
 /// Type of P&L floor for exit decisions
