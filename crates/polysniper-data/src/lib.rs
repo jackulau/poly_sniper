@@ -2,10 +2,12 @@
 //!
 //! Data ingestion layer for WebSocket and REST API clients.
 
+pub mod connection_health;
 pub mod event_bus;
 pub mod feed_aggregator;
 pub mod feed_types;
 pub mod gamma_client;
+pub mod http_pool;
 pub mod market_cache;
 pub mod openrouter_client;
 pub mod resolution_monitor;
@@ -14,10 +16,12 @@ pub mod twitter_client;
 pub mod webhook_server;
 pub mod ws_manager;
 
+pub use connection_health::{ConnectionHealth, HealthSnapshot, HealthStatus};
 pub use event_bus::BroadcastEventBus;
 pub use feed_aggregator::FeedAggregator;
 pub use feed_types::{FeedConfig, FeedError, FeedItem, FeedSource, RssConfig, RssFeedConfig, TwitterConfig, TwitterQueryConfig};
 pub use gamma_client::GammaClient;
+pub use http_pool::{HttpPool, HttpPoolConfig, HttpPoolError, WarmupResult};
 pub use market_cache::MarketCache;
 pub use openrouter_client::{
     ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice, OpenRouterClient,
@@ -27,4 +31,4 @@ pub use resolution_monitor::ResolutionMonitor;
 pub use rss_client::RssClient;
 pub use twitter_client::TwitterClient;
 pub use webhook_server::WebhookServer;
-pub use ws_manager::WsManager;
+pub use ws_manager::{ConnectionConfig, WsManager};

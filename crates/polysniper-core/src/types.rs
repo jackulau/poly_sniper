@@ -726,6 +726,10 @@ pub struct AppConfig {
     pub gas: crate::GasConfig,
     #[serde(default)]
     pub webhook: WebhookConfig,
+    #[serde(default)]
+    pub connection: ConnectionConfig,
+    #[serde(default)]
+    pub health: HealthConfig,
 }
 
 /// Adaptive order sizing configuration based on orderbook depth
@@ -990,6 +994,85 @@ impl Default for OrderManagementConfig {
             enabled: true,
             check_interval_ms: 1000,
             default_policy: ManagementPolicyConfig::default(),
+        }
+    }
+}
+
+/// Connection warmup and keep-alive configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectionConfig {
+    // WebSocket settings
+    /// Ping interval in milliseconds (more aggressive than default 30s)
+    #[serde(default = "default_ws_ping_interval_ms")]
+    pub ws_ping_interval_ms: u64,
+    /// Pong timeout in milliseconds before considering connection dead
+    #[serde(default = "default_ws_pong_timeout_ms")]
+    pub ws_pong_timeout_ms: u64,
+    /// Initial reconnect delay in milliseconds
+    #[serde(default = "default_ws_initial_reconnect_delay_ms")]
+    pub ws_initial_reconnect_delay_ms: u64,
+    /// Maximum reconnect delay in milliseconds
+    #[serde(default = "default_ws_max_reconnect_delay_ms")]
+    pub ws_max_reconnect_delay_ms: u64,
+    /// Backoff multiplier for exponential backoff
+    #[serde(default = "default_ws_backoff_multiplier")]
+    pub ws_backoff_multiplier: f64,
+    /// Jitter factor to prevent thundering herd (0.0 to 1.0)
+    #[serde(default = "default_ws_jitter_factor")]
+    pub ws_jitter_factor: f64,
+
+    // HTTP pool settings
+    /// Maximum idle connections per host
+    #[serde(default = "default_http_max_idle_per_host")]
+    pub http_max_idle_per_host: usize,
+    /// How long to keep idle connections (seconds)
+    #[serde(default = "default_http_idle_timeout_secs")]
+    pub http_idle_timeout_secs: u64,
+    /// Connection timeout (seconds)
+    #[serde(default = "default_http_connect_timeout_secs")]
+    pub http_connect_timeout_secs: u64,
+    /// TCP keepalive interval (seconds)
+    #[serde(default = "default_http_tcp_keepalive_secs")]
+    pub http_tcp_keepalive_secs: u64,
+    /// Request timeout (seconds)
+    #[serde(default = "default_http_request_timeout_secs")]
+    pub http_request_timeout_secs: u64,
+
+    /// Warmup endpoints (establish connections on startup)
+    #[serde(default)]
+    pub warmup_urls: Vec<String>,
+}
+
+fn default_ws_ping_interval_ms() -> u64 { 15000 }
+fn default_ws_pong_timeout_ms() -> u64 { 5000 }
+fn default_ws_initial_reconnect_delay_ms() -> u64 { 100 }
+fn default_ws_max_reconnect_delay_ms() -> u64 { 30000 }
+fn default_ws_backoff_multiplier() -> f64 { 2.0 }
+fn default_ws_jitter_factor() -> f64 { 0.1 }
+fn default_http_max_idle_per_host() -> usize { 10 }
+fn default_http_idle_timeout_secs() -> u64 { 90 }
+fn default_http_connect_timeout_secs() -> u64 { 5 }
+fn default_http_tcp_keepalive_secs() -> u64 { 60 }
+fn default_http_request_timeout_secs() -> u64 { 30 }
+
+impl Default for ConnectionConfig {
+    fn default() -> Self {
+        Self {
+            ws_ping_interval_ms: default_ws_ping_interval_ms(),
+            ws_pong_timeout_ms: default_ws_pong_timeout_ms(),
+            ws_initial_reconnect_delay_ms: default_ws_initial_reconnect_delay_ms(),
+            ws_max_reconnect_delay_ms: default_ws_max_reconnect_delay_ms(),
+            ws_backoff_multiplier: default_ws_backoff_multiplier(),
+            ws_jitter_factor: default_ws_jitter_factor(),
+            http_max_idle_per_host: default_http_max_idle_per_host(),
+            http_idle_timeout_secs: default_http_idle_timeout_secs(),
+            http_connect_timeout_secs: default_http_connect_timeout_secs(),
+            http_tcp_keepalive_secs: default_http_tcp_keepalive_secs(),
+            http_request_timeout_secs: default_http_request_timeout_secs(),
+            warmup_urls: vec![
+                "https://clob.polymarket.com/".to_string(),
+                "https://gamma-api.polymarket.com/".to_string(),
+            ],
         }
     }
 }
