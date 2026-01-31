@@ -9,6 +9,7 @@ pub mod llm_prediction;
 pub mod ml_processor;
 pub mod multi_leg;
 pub mod new_market;
+pub mod news_velocity;
 pub mod orderbook_imbalance;
 pub mod price_spike;
 pub mod resolution_exit;
@@ -31,3 +32,7 @@ pub use resolution_exit::ResolutionExitStrategy;
 pub use sentiment_analyzer::SentimentAnalyzer;
 pub use sentiment_strategy::{SentimentMarketMapping, SentimentStrategy, SentimentStrategyConfig};
 pub use target_price::{PriceTarget, TargetDirection, TargetPriceConfig, TargetPriceStrategy};
+pub use news_velocity::{
+    AccelerationConfig, DecelerationConfig, NewsVelocityStrategy, NewsVelocityStrategyConfig,
+    VelocityMarketMapping,
+};

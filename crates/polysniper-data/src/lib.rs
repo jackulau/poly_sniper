@@ -7,6 +7,7 @@ pub mod feed_aggregator;
 pub mod feed_types;
 pub mod gamma_client;
 pub mod market_cache;
+pub mod news_velocity;
 pub mod openrouter_client;
 pub mod resolution_monitor;
 pub mod rss_client;
@@ -28,3 +29,7 @@ pub use rss_client::RssClient;
 pub use twitter_client::TwitterClient;
 pub use webhook_server::WebhookServer;
 pub use ws_manager::WsManager;
+pub use news_velocity::{
+    ArticleTimestamp, KeywordTracking, NewsCategory, NewsVelocityConfig, NewsVelocityTracker,
+    VelocityMetrics, VelocityWindows,
+};
