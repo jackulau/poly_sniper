@@ -1,0 +1,55 @@
+# Whale Detection Strategy Configuration
+#
+# Identifies and tracks large trades and wallet addresses exhibiting
+# significant trading activity.
+
+[strategy]
+enabled = true
+id = "whale_detector"
+name = "Whale Detection"
+
+[strategy.whale]
+# Single trade threshold in USD to be considered a whale trade
+whale_threshold_usd = "5000"
+
+# Cumulative threshold in USD across multiple trades
+aggregate_threshold_usd = "10000"
+
+# Window for cumulative aggregation in seconds (5 minutes)
+aggregate_window_secs = 300
+
+# Generate alerts when whale activity is detected
+alert_on_detection = true
+
+# Enable wallet address profiling and classification
+track_addresses = true
+
+# Maximum number of trades to keep in address history
+address_history_limit = 100
+
+# Cooldown between alerts for same address in seconds
+cooldown_secs = 60
+
+# Actions to take on whale detection
+[strategy.whale.actions]
+# Reduce position when whale detected trading against us
+reduce_position_on_whale = true
+
+# Multiplier for position reduction (0.5 = reduce to 50%)
+reduction_multiplier = "0.5"
+
+# Halt new trades when cumulative whale activity exceeds threshold
+halt_on_cumulative = false
+
+# Follow whale trades when confidence is high
+follow_whale_enabled = true
+
+# Minimum confidence to follow whale (0.0 to 1.0)
+follow_whale_min_confidence = "0.7"
+
+# Known whale addresses (manual configuration)
+# Add addresses with known trading patterns for enhanced detection
+[strategy.whale.known_addresses]
+# Example entries (uncomment and modify as needed):
+# "0xabc123def456..." = { classification = "Informed", notes = "Historical accuracy >70%" }
+# "0x789ghi012jkl..." = { classification = "Accumulator", notes = "Long-term holder" }
