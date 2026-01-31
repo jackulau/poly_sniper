@@ -509,24 +509,35 @@ fn rand_suffix() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use polysniper_core::PriceLevel;
+    use crate::whale_detector::{WhaleAction, WhaleTrade};
 
-    fn create_test_orderbook(
-        token_id: &str,
-        bids: Vec<(Decimal, Decimal)>,
-        asks: Vec<(Decimal, Decimal)>,
-    ) -> polysniper_core::Orderbook {
-        polysniper_core::Orderbook {
-            token_id: token_id.to_string(),
+    /// Helper function to create a test WhaleAlert (WhaleActivity alias)
+    fn create_test_alert(
+        alert_type: WhaleActivityType,
+        side: Side,
+        size_usd: Decimal,
+        confidence: Decimal,
+    ) -> WhaleActivity {
+        let whale_trade = WhaleTrade {
+            trade_id: format!("test_{}", rand_suffix()),
+            token_id: "test_token".to_string(),
             market_id: "test_market".to_string(),
-            bids: bids
-                .into_iter()
-                .map(|(price, size)| PriceLevel { price, size })
-                .collect(),
-            asks: asks
-                .into_iter()
-                .map(|(price, size)| PriceLevel { price, size })
-                .collect(),
+            side,
+            size_usd,
+            price: dec!(0.50),
+            timestamp: Utc::now(),
+            address: None,
+            is_single_whale: true,
+            cumulative_context: None,
+        };
+
+        WhaleActivity {
+            alert_type,
+            token_id: "test_token".to_string(),
+            market_id: "test_market".to_string(),
+            whale_trade,
+            recommended_action: WhaleAction::FollowWhale { direction: side },
+            confidence,
             timestamp: Utc::now(),
         }
     }
@@ -534,14 +545,14 @@ mod tests {
     #[test]
     fn test_config_should_signal_on() {
         let config = WhaleStrategyConfig {
-            signal_on_activities: vec!["LargeResting".to_string(), "Accumulation".to_string()],
+            signal_on_activities: vec!["SingleLargeTrade".to_string(), "CumulativeActivity".to_string()],
             ..Default::default()
         };
 
-        assert!(config.should_signal_on(&WhaleActivityType::LargeResting));
-        assert!(config.should_signal_on(&WhaleActivityType::Accumulation));
-        assert!(!config.should_signal_on(&WhaleActivityType::Iceberg));
-        assert!(!config.should_signal_on(&WhaleActivityType::Spoofing));
+        assert!(config.should_signal_on(&WhaleActivityType::SingleLargeTrade));
+        assert!(config.should_signal_on(&WhaleActivityType::CumulativeActivity));
+        assert!(!config.should_signal_on(&WhaleActivityType::KnownWhaleActive));
+        assert!(!config.should_signal_on(&WhaleActivityType::WhaleReversal));
     }
 
     #[test]
@@ -555,71 +566,55 @@ mod tests {
         let strategy = WhaleStrategy::new(config.clone(), detector_config);
 
         // Following whale buy activity should result in buy
-        let buy_activity = WhaleActivity {
-            activity_type: WhaleActivityType::LargeResting,
-            side: Side::Buy,
-            total_size_usd: dec!(10000),
-            num_orders: 1,
-            avg_price: dec!(0.50),
-            first_seen: Utc::now(),
-            last_seen: Utc::now(),
-            confidence: dec!(0.9),
-        };
+        let buy_activity = create_test_alert(
+            WhaleActivityType::SingleLargeTrade,
+            Side::Buy,
+            dec!(10000),
+            dec!(0.9),
+        );
 
         assert_eq!(strategy.determine_side(&buy_activity, &config), Side::Buy);
 
         // Following whale sell activity should result in sell
-        let sell_activity = WhaleActivity {
-            activity_type: WhaleActivityType::LargeResting,
-            side: Side::Sell,
-            total_size_usd: dec!(10000),
-            num_orders: 1,
-            avg_price: dec!(0.50),
-            first_seen: Utc::now(),
-            last_seen: Utc::now(),
-            confidence: dec!(0.9),
-        };
+        let sell_activity = create_test_alert(
+            WhaleActivityType::SingleLargeTrade,
+            Side::Sell,
+            dec!(10000),
+            dec!(0.9),
+        );
 
         assert_eq!(strategy.determine_side(&sell_activity, &config), Side::Sell);
     }
 
     #[test]
-    fn test_determine_side_fade_spoofing() {
+    fn test_determine_side_fade_reversal() {
         let config = WhaleStrategyConfig {
             follow_whales: true,
-            fade_spoofing: true,
+            fade_spoofing: true, // fade_spoofing also controls fading whale reversals
             ..Default::default()
         };
         let detector_config = WhaleConfig::default();
         let strategy = WhaleStrategy::new(config.clone(), detector_config);
 
-        // Fading buy spoofing should result in sell
-        let spoof_buy = WhaleActivity {
-            activity_type: WhaleActivityType::Spoofing,
-            side: Side::Buy,
-            total_size_usd: dec!(10000),
-            num_orders: 1,
-            avg_price: dec!(0.50),
-            first_seen: Utc::now(),
-            last_seen: Utc::now(),
-            confidence: dec!(0.9),
-        };
+        // Fading buy reversal should result in sell
+        let reversal_buy = create_test_alert(
+            WhaleActivityType::WhaleReversal,
+            Side::Buy,
+            dec!(10000),
+            dec!(0.9),
+        );
 
-        assert_eq!(strategy.determine_side(&spoof_buy, &config), Side::Sell);
+        assert_eq!(strategy.determine_side(&reversal_buy, &config), Side::Sell);
 
-        // Fading sell spoofing should result in buy
-        let spoof_sell = WhaleActivity {
-            activity_type: WhaleActivityType::Spoofing,
-            side: Side::Sell,
-            total_size_usd: dec!(10000),
-            num_orders: 1,
-            avg_price: dec!(0.50),
-            first_seen: Utc::now(),
-            last_seen: Utc::now(),
-            confidence: dec!(0.9),
-        };
+        // Fading sell reversal should result in buy
+        let reversal_sell = create_test_alert(
+            WhaleActivityType::WhaleReversal,
+            Side::Sell,
+            dec!(10000),
+            dec!(0.9),
+        );
 
-        assert_eq!(strategy.determine_side(&spoof_sell, &config), Side::Buy);
+        assert_eq!(strategy.determine_side(&reversal_sell, &config), Side::Buy);
     }
 
     #[test]

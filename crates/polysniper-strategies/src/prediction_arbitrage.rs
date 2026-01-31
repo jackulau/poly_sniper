@@ -885,7 +885,7 @@ mod tests {
         let external_price_event =
             SystemEvent::ExternalPriceUpdate(polysniper_core::events::ExternalPriceUpdateEvent {
                 platform: ExternalPlatform::Metaculus,
-                question_id: "12345".to_string(),
+                external_id: "12345".to_string(),
                 yes_price: dec!(0.65),
                 polymarket_mapping: Some("test".to_string()),
                 timestamp: Utc::now(),

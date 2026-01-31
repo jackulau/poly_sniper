@@ -848,6 +848,10 @@ mod tests {
         async fn get_daily_pnl(&self) -> Decimal {
             Decimal::ZERO
         }
+
+        async fn get_trade_outcomes(&self, _limit: usize) -> Vec<(Decimal, Decimal)> {
+            Vec::new()
+        }
     }
 
     fn create_test_market(id: &str, yes_token: &str, no_token: &str) -> Market {
