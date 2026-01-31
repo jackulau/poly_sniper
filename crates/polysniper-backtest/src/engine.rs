@@ -499,6 +499,11 @@ impl StateProvider for SimulatedState {
     async fn get_daily_pnl(&self) -> Decimal {
         Decimal::ZERO // Not tracked in simulation
     }
+
+    async fn get_trade_outcomes(&self, _limit: usize) -> Vec<(Decimal, Decimal)> {
+        // Trade history not tracked in basic simulation
+        Vec::new()
+    }
 }
 
 #[cfg(test)]

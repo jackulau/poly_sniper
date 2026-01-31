@@ -451,6 +451,10 @@ mod tests {
         async fn get_daily_pnl(&self) -> Decimal {
             *self.daily_pnl.read().await
         }
+
+        async fn get_trade_outcomes(&self, _limit: usize) -> Vec<(Decimal, Decimal)> {
+            Vec::new()
+        }
     }
 
     fn create_test_state() -> (Arc<ControlState>, Arc<RiskManager>, broadcast::Sender<()>) {

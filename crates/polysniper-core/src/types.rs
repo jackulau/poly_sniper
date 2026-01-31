@@ -259,6 +259,38 @@ impl Default for AuthConfig {
     }
 }
 
+/// Kelly criterion position sizing configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KellyConfig {
+    /// Whether Kelly criterion sizing is enabled
+    pub enabled: bool,
+    /// Fractional Kelly multiplier (0.25 = quarter-Kelly, 0.5 = half-Kelly, 1.0 = full Kelly)
+    /// Lower values are more conservative
+    pub fraction: Decimal,
+    /// Number of recent trades to consider for edge calculation
+    pub window_size: u32,
+    /// Minimum number of trades required before Kelly sizing kicks in
+    /// Uses base sizing until this threshold is met
+    pub min_trades: u32,
+    /// Maximum position multiplier (caps Kelly sizing to avoid over-betting)
+    pub max_multiplier: Decimal,
+    /// Minimum position multiplier (ensures some position even with negative edge)
+    pub min_multiplier: Decimal,
+}
+
+impl Default for KellyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            fraction: Decimal::new(5, 1),         // 0.5 (half-Kelly, conservative default)
+            window_size: 100,                      // Last 100 trades
+            min_trades: 20,                        // Need 20 trades before Kelly kicks in
+            max_multiplier: Decimal::new(2, 0),    // 2.0 max (double size)
+            min_multiplier: Decimal::new(25, 2),   // 0.25 min (quarter size)
+        }
+    }
+}
+
 /// Volatility-adjusted position sizing configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolatilityConfig {
@@ -536,6 +568,9 @@ pub struct RiskConfig {
     /// Volatility-adjusted position sizing config
     #[serde(default)]
     pub volatility: VolatilityConfig,
+    /// Kelly criterion position sizing config
+    #[serde(default)]
+    pub kelly: KellyConfig,
     /// Time-based risk rules config
     #[serde(default)]
     pub time_rules: TimeRulesConfig,
@@ -556,6 +591,7 @@ impl Default for RiskConfig {
             circuit_breaker_loss_usd: Decimal::new(300, 0),
             max_orders_per_minute: 60,
             volatility: VolatilityConfig::default(),
+            kelly: KellyConfig::default(),
             time_rules: TimeRulesConfig::default(),
             correlation: CorrelationConfig::default(),
             drawdown: DrawdownConfig::default(),

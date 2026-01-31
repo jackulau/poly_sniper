@@ -165,6 +165,13 @@ impl StateProvider for MarketCache {
     async fn get_daily_pnl(&self) -> Decimal {
         *self.daily_pnl.read().await
     }
+
+    async fn get_trade_outcomes(&self, _limit: usize) -> Vec<(Decimal, Decimal)> {
+        // MarketCache doesn't track trade history directly
+        // This would need to be fetched from the persistence layer
+        // For now, return empty - Kelly sizing will skip if no data
+        Vec::new()
+    }
 }
 
 #[async_trait::async_trait]

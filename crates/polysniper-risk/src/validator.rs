@@ -2,6 +2,7 @@
 
 use crate::correlation::CorrelationTracker;
 use crate::drawdown::DrawdownCalculator;
+use crate::kelly::{KellyCalculator, TradeOutcome};
 use crate::time_rules::{TimeRuleEngine, TimeRuleResult};
 use crate::volatility::VolatilityCalculator;
 use async_trait::async_trait;
@@ -33,6 +34,8 @@ pub struct RiskManager {
     recent_orders: Arc<RwLock<VecDeque<OrderRecord>>>,
     /// Volatility calculator for position sizing
     volatility_calculator: VolatilityCalculator,
+    /// Kelly criterion calculator for edge-based position sizing
+    kelly_calculator: KellyCalculator,
     /// Time-based rule engine
     time_rule_engine: TimeRuleEngine,
     /// Correlation tracker for correlated position limits
@@ -45,6 +48,7 @@ impl RiskManager {
     /// Create a new risk manager
     pub fn new(config: RiskConfig) -> Self {
         let volatility_calculator = VolatilityCalculator::new(config.volatility.clone());
+        let kelly_calculator = KellyCalculator::new(config.kelly.clone());
         let time_rule_engine = TimeRuleEngine::new(config.time_rules.clone());
         let correlation_tracker = CorrelationTracker::new(config.correlation.clone());
         let drawdown_calculator = DrawdownCalculator::new(config.drawdown.clone());
@@ -54,10 +58,16 @@ impl RiskManager {
             halt_reason: Arc::new(RwLock::new(None)),
             recent_orders: Arc::new(RwLock::new(VecDeque::new())),
             volatility_calculator,
+            kelly_calculator,
             time_rule_engine,
             correlation_tracker,
             drawdown_calculator,
         }
+    }
+
+    /// Get a reference to the Kelly calculator
+    pub fn kelly_calculator(&self) -> &KellyCalculator {
+        &self.kelly_calculator
     }
 
     /// Get a reference to the time rule engine
@@ -434,6 +444,53 @@ impl RiskManager {
             );
 
             return Some((adjusted_size, reason));
+    /// Calculate Kelly-adjusted size based on trade history edge
+    ///
+    /// Returns (adjusted_size, reason) if Kelly adjustment applies.
+    /// Kelly sizing is applied AFTER volatility adjustment.
+    async fn calculate_kelly_adjusted_size(
+        &self,
+        current_size: Decimal,
+        state: &dyn StateProvider,
+    ) -> Option<(Decimal, String)> {
+        if !self.kelly_calculator.is_enabled() {
+            return None;
+        }
+
+        // Get trade history for Kelly calculation
+        let config = self.config.read().await;
+        let window_size = config.kelly.window_size as usize;
+        drop(config);
+
+        let trade_outcomes_raw = state.get_trade_outcomes(window_size).await;
+
+        if trade_outcomes_raw.is_empty() {
+            debug!("No trade history for Kelly calculation, skipping adjustment");
+            return None;
+        }
+
+        // Convert to TradeOutcome structs
+        let trade_outcomes: Vec<TradeOutcome> = trade_outcomes_raw
+            .iter()
+            .map(|(pnl, size_usd)| TradeOutcome::new(*pnl, *size_usd))
+            .collect();
+
+        let (adjusted_size, multiplier, reason) = self
+            .kelly_calculator
+            .adjust_size(current_size, &trade_outcomes);
+
+        // Only report modification if multiplier is not 1.0
+        if multiplier != Decimal::ONE {
+            if let Some(reason_str) = reason {
+                info!(
+                    original_size = %current_size,
+                    adjusted_size = %adjusted_size,
+                    multiplier = %multiplier,
+                    trade_count = trade_outcomes.len(),
+                    "Applying Kelly criterion position sizing"
+                );
+                return Some((adjusted_size, reason_str));
+            }
         }
 
         None
@@ -581,6 +638,31 @@ impl RiskValidator for RiskManager {
             return Ok(RiskDecision::Modified {
                 new_size: current_size,
                 reason: reasons.join("; "),
+        let (current_size, mut reasons) = match self
+            .calculate_volatility_adjusted_size(signal, state)
+            .await
+        {
+            Some((adjusted_size, reason)) => (adjusted_size, vec![reason]),
+            None => (signal.size, vec![]),
+        };
+
+        // Apply Kelly criterion sizing after volatility adjustment
+        let (final_size, final_reasons) = match self
+            .calculate_kelly_adjusted_size(current_size, state)
+            .await
+        {
+            Some((kelly_adjusted, kelly_reason)) => {
+                reasons.push(kelly_reason);
+                (kelly_adjusted, reasons)
+            }
+            None => (current_size, reasons),
+        };
+
+        // Return modified decision if any sizing adjustments were made
+        if !final_reasons.is_empty() {
+            return Ok(RiskDecision::Modified {
+                new_size: final_size,
+                reason: final_reasons.join("; "),
             });
         }
 
@@ -702,6 +784,11 @@ mod tests {
         async fn get_daily_pnl(&self) -> Decimal {
             self.daily_pnl
         }
+
+        async fn get_trade_outcomes(&self, _limit: usize) -> Vec<(Decimal, Decimal)> {
+            // Return empty for existing tests (no Kelly adjustment)
+            Vec::new()
+        }
     }
 
     fn create_test_signal(market_id: &str, token_id: &str, size_usd: Decimal, price: Decimal) -> TradeSignal {
@@ -734,6 +821,8 @@ mod tests {
             volatility: VolatilityConfig::default(),
             time_rules: TimeRulesConfig::default(),
             volatility: Default::default(),
+            volatility: Default::default(),
+            kelly: Default::default(),
             time_rules: Default::default(),
             correlation: CorrelationConfig {
                 enabled: true,
