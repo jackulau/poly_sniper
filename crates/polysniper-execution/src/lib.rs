@@ -10,8 +10,10 @@ pub mod gas_optimizer;
 pub mod gas_tracker;
 pub mod order_builder;
 pub mod order_manager;
+pub mod participation_adapter;
 pub mod queue_estimator;
 pub mod submitter;
+pub mod volume_monitor;
 
 pub use algorithms::{
     AlgorithmConfig, AlgorithmType, ChildOrder, ExecutionStats, TwapConfig, TwapExecutor,
@@ -24,5 +26,7 @@ pub use gas_optimizer::GasOptimizer;
 pub use gas_tracker::GasTracker;
 pub use order_builder::OrderBuilder;
 pub use order_manager::OrderManager;
+pub use participation_adapter::{ParticipationAdapter, ParticipationConfig, ParticipationRate};
 pub use queue_estimator::QueueEstimator;
 pub use submitter::OrderSubmitter;
+pub use volume_monitor::{VolumeMonitor, VolumeMonitorConfig, VolumeObservation};

@@ -170,6 +170,30 @@ lazy_static! {
         "polysniper_config_reloads_total",
         "Total successful config reloads"
     ).unwrap();
+
+    // Volume and participation metrics
+    pub static ref VOLUME_RATIO_CURRENT: GaugeVec = GaugeVec::new(
+        Opts::new("polysniper_volume_ratio_current", "Current volume ratio (current/average) per token"),
+        &["token_id"]
+    ).unwrap();
+
+    pub static ref PARTICIPATION_RATE_USED: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "polysniper_participation_rate_used",
+            "Participation rate used for order slices"
+        ).buckets(vec![0.02, 0.05, 0.08, 0.10, 0.12, 0.15, 0.18, 0.20, 0.25]),
+        &["token_id", "algorithm"]
+    ).unwrap();
+
+    pub static ref PARTICIPATION_ADJUSTMENTS: IntCounterVec = IntCounterVec::new(
+        Opts::new("polysniper_participation_adjustments_total", "Total participation rate adjustments"),
+        &["direction", "reason"]
+    ).unwrap();
+
+    pub static ref VOLUME_OBSERVATIONS: IntCounterVec = IntCounterVec::new(
+        Opts::new("polysniper_volume_observations_total", "Total volume observations recorded"),
+        &["token_id"]
+    ).unwrap();
 }
 
 /// Register all metrics with the registry
@@ -237,6 +261,20 @@ pub fn register_metrics() {
 
     // Config metrics
     REGISTRY.register(Box::new(CONFIG_RELOADS.clone())).ok();
+
+    // Volume and participation metrics
+    REGISTRY
+        .register(Box::new(VOLUME_RATIO_CURRENT.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(PARTICIPATION_RATE_USED.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(PARTICIPATION_ADJUSTMENTS.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(VOLUME_OBSERVATIONS.clone()))
+        .ok();
 }
 
 /// Get metrics as Prometheus text format
@@ -373,6 +411,32 @@ pub fn record_alert_failure(channel: &str) {
 /// Update uptime
 pub fn update_uptime(seconds: i64) {
     UPTIME_SECONDS.set(seconds);
+}
+
+/// Update volume ratio for a token
+pub fn update_volume_ratio(token_id: &str, ratio: f64) {
+    VOLUME_RATIO_CURRENT
+        .with_label_values(&[token_id])
+        .set(ratio);
+}
+
+/// Record participation rate used for an order slice
+pub fn record_participation_rate(token_id: &str, algorithm: &str, rate: f64) {
+    PARTICIPATION_RATE_USED
+        .with_label_values(&[token_id, algorithm])
+        .observe(rate);
+}
+
+/// Record a participation rate adjustment
+pub fn record_participation_adjustment(direction: &str, reason: &str) {
+    PARTICIPATION_ADJUSTMENTS
+        .with_label_values(&[direction, reason])
+        .inc();
+}
+
+/// Record a volume observation
+pub fn record_volume_observation(token_id: &str) {
+    VOLUME_OBSERVATIONS.with_label_values(&[token_id]).inc();
 }
 
 /// Configuration for metrics

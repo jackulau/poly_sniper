@@ -1,10 +1,13 @@
 //! Time-Weighted Average Price (TWAP) Execution Algorithm
 //!
 //! Splits large orders evenly across time intervals to reduce market impact.
+//! Supports adaptive participation rates based on real-time volume conditions.
 
 use super::{ChildOrder, ExecutionStats};
+use crate::participation_adapter::{ParticipationAdapter, ParticipationRate};
+use crate::volume_monitor::VolumeMonitor;
 use chrono::{DateTime, Duration, Utc};
-use polysniper_core::{Side, TradeSignal};
+use polysniper_core::{Priority, Side, TradeSignal};
 use rand::Rng;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -31,6 +34,8 @@ pub struct TwapConfig {
     pub size_jitter_pct: f64,
     /// Maximum participation rate (fraction of interval volume)
     pub max_participation_rate: Decimal,
+    /// Enable adaptive participation rate based on real-time volume
+    pub adaptive_participation: bool,
 }
 
 impl Default for TwapConfig {
@@ -43,6 +48,7 @@ impl Default for TwapConfig {
             randomize_size: true,          // Vary sizes
             size_jitter_pct: 0.1,          // +/- 10% size variation
             max_participation_rate: dec!(0.1), // 10% max of volume
+            adaptive_participation: false, // Disabled by default for backwards compatibility
         }
     }
 }
@@ -72,12 +78,20 @@ pub struct TwapState {
     pub num_fills: u32,
     /// Whether execution is cancelled
     pub cancelled: bool,
+    /// Token ID for adaptive participation
+    pub token_id: String,
+    /// Priority level for adaptive participation
+    pub priority: Priority,
+    /// Participation rates used for each slice (for analysis)
+    pub participation_rates: Vec<Decimal>,
 }
 
 /// TWAP Executor for managing TWAP executions
 pub struct TwapExecutor {
     config: TwapConfig,
     active_orders: Arc<RwLock<HashMap<String, TwapState>>>,
+    /// Optional participation adapter for adaptive rates
+    participation_adapter: Option<Arc<ParticipationAdapter>>,
 }
 
 impl TwapExecutor {
@@ -86,6 +100,7 @@ impl TwapExecutor {
         Self {
             config: TwapConfig::default(),
             active_orders: Arc::new(RwLock::new(HashMap::new())),
+            participation_adapter: None,
         }
     }
 
@@ -94,7 +109,30 @@ impl TwapExecutor {
         Self {
             config,
             active_orders: Arc::new(RwLock::new(HashMap::new())),
+            participation_adapter: None,
         }
+    }
+
+    /// Create a new TWAP executor with adaptive participation support
+    pub fn with_adaptive_participation(
+        config: TwapConfig,
+        volume_monitor: Arc<RwLock<VolumeMonitor>>,
+    ) -> Self {
+        use crate::participation_adapter::ParticipationConfig;
+        let adapter = Arc::new(ParticipationAdapter::new(
+            volume_monitor,
+            ParticipationConfig::default(),
+        ));
+        Self {
+            config,
+            active_orders: Arc::new(RwLock::new(HashMap::new())),
+            participation_adapter: Some(adapter),
+        }
+    }
+
+    /// Set the participation adapter for adaptive rates
+    pub fn set_participation_adapter(&mut self, adapter: Arc<ParticipationAdapter>) {
+        self.participation_adapter = Some(adapter);
     }
 
     /// Create execution schedule from a trade signal
@@ -185,6 +223,9 @@ impl TwapExecutor {
             num_fills: 0,
             cancelled: false,
             child_orders,
+            token_id: signal.token_id.clone(),
+            priority: signal.priority,
+            participation_rates: Vec::new(),
         };
 
         let parent_id = signal.id.clone();
@@ -195,10 +236,69 @@ impl TwapExecutor {
             total_size = %signal.size,
             reference_price = %reference_price,
             num_slices = self.config.num_slices,
+            adaptive = self.config.adaptive_participation,
             "Started TWAP execution"
         );
 
         parent_id
+    }
+
+    /// Calculate the adaptive participation rate for a given execution
+    ///
+    /// Returns the participation rate to use for the current slice based on
+    /// real-time volume conditions, urgency, and time remaining.
+    pub async fn get_adaptive_participation_rate(&self, parent_id: &str) -> Option<ParticipationRate> {
+        if !self.config.adaptive_participation {
+            return None;
+        }
+
+        let adapter = self.participation_adapter.as_ref()?;
+
+        let orders = self.active_orders.read().await;
+        let state = orders.get(parent_id)?;
+
+        // Calculate remaining time percentage
+        let now = Utc::now();
+        let total_duration = (state.end_time - state.started_at).num_seconds() as f64;
+        let remaining_duration = (state.end_time - now).num_seconds().max(0) as f64;
+        let remaining_time_pct = if total_duration > 0.0 {
+            Decimal::from_f64_retain(remaining_duration / total_duration).unwrap_or(Decimal::ONE)
+        } else {
+            Decimal::ZERO
+        };
+
+        let rate = adapter
+            .calculate_rate(&state.token_id, state.priority, remaining_time_pct)
+            .await;
+
+        Some(rate)
+    }
+
+    /// Record the participation rate used for a slice
+    pub async fn record_participation_rate(&self, parent_id: &str, rate: Decimal) {
+        let mut orders = self.active_orders.write().await;
+        if let Some(state) = orders.get_mut(parent_id) {
+            state.participation_rates.push(rate);
+            debug!(
+                parent_id = %parent_id,
+                rate = %rate,
+                slice = state.participation_rates.len(),
+                "Recorded participation rate for TWAP slice"
+            );
+        }
+    }
+
+    /// Get the average participation rate used for an execution
+    pub async fn get_average_participation_rate(&self, parent_id: &str) -> Option<Decimal> {
+        let orders = self.active_orders.read().await;
+        let state = orders.get(parent_id)?;
+
+        if state.participation_rates.is_empty() {
+            return Some(self.config.max_participation_rate);
+        }
+
+        let sum: Decimal = state.participation_rates.iter().sum();
+        Some(sum / Decimal::from(state.participation_rates.len()))
     }
 
     /// Get the next child order that should be executed
@@ -406,6 +506,7 @@ mod tests {
             randomize_size: false,
             size_jitter_pct: 0.0,
             max_participation_rate: dec!(0.1),
+            adaptive_participation: false,
         };
 
         let executor = TwapExecutor::with_config(config);
@@ -438,6 +539,7 @@ mod tests {
             randomize_size: true,
             size_jitter_pct: 0.1,
             max_participation_rate: dec!(0.1),
+            adaptive_participation: false,
         };
 
         let executor = TwapExecutor::with_config(config);
@@ -465,6 +567,7 @@ mod tests {
             randomize_size: false,
             size_jitter_pct: 0.0,
             max_participation_rate: dec!(0.1),
+            adaptive_participation: false,
         };
 
         let executor = TwapExecutor::with_config(config);
@@ -510,6 +613,7 @@ mod tests {
             randomize_size: false,
             size_jitter_pct: 0.0,
             max_participation_rate: dec!(0.1),
+            adaptive_participation: false,
         };
 
         let executor = TwapExecutor::with_config(config);
