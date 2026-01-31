@@ -19,3 +19,4 @@ rust_decimal_macros.workspace = true
 tempfile = "3"
 tempfile = "3.12"
 tempfile = "3.24"
+tempfile = "3.15"

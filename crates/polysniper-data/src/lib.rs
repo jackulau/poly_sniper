@@ -4,6 +4,7 @@
 
 pub mod connection_health;
 pub mod crypto_price_client;
+pub mod connection_pool;
 pub mod event_bus;
 pub mod feed_aggregator;
 pub mod feed_types;
@@ -20,6 +21,10 @@ pub mod ws_manager;
 
 pub use connection_health::{ConnectionHealth, HealthSnapshot, HealthStatus};
 pub use crypto_price_client::{CryptoApiProvider, CryptoPrice, CryptoPriceClient, CryptoPriceConfig};
+pub use connection_pool::{
+    ClobConnection, ConnectionPool, ConnectionPoolConfig, HealthTracker, LatencyStats,
+    RpcConnection,
+};
 pub use event_bus::BroadcastEventBus;
 pub use feed_aggregator::FeedAggregator;
 pub use feed_types::{FeedConfig, FeedError, FeedItem, FeedSource, RssConfig, RssFeedConfig, TwitterConfig, TwitterQueryConfig};
@@ -36,3 +41,4 @@ pub use rss_client::RssClient;
 pub use twitter_client::TwitterClient;
 pub use webhook_server::WebhookServer;
 pub use ws_manager::{ConnectionConfig, WsManager};
+pub use ws_manager::{WsManager, WsManagerConfig};

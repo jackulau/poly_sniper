@@ -823,6 +823,7 @@ mod tests {
             volatility: Default::default(),
             volatility: Default::default(),
             kelly: Default::default(),
+            volatility: Default::default(),
             time_rules: Default::default(),
             correlation: CorrelationConfig {
                 enabled: true,
@@ -1019,7 +1020,7 @@ mod tests {
 
         let risk_manager = RiskManager::new(config);
 
-        assert!(risk_manager.correlation_tracker().is_enabled());
-        assert_eq!(risk_manager.correlation_tracker().max_correlated_exposure(), dec!(3000));
+        assert!(risk_manager.correlation_tracker.is_enabled());
+        assert_eq!(risk_manager.correlation_tracker.max_correlated_exposure(), dec!(3000));
     }
 }

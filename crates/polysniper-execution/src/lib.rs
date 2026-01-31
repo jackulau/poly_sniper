@@ -4,6 +4,7 @@
 
 pub mod algorithms;
 pub mod depth_analyzer;
+pub mod fast_submitter;
 pub mod fill_manager;
 pub mod fill_poller;
 pub mod gas_optimizer;
@@ -21,6 +22,7 @@ pub use algorithms::{
     VolumeProfile, VwapConfig, VwapExecutor,
 };
 pub use depth_analyzer::{DepthAnalyzer, DepthAnalyzerConfig};
+pub use fast_submitter::{FastSubmitter, FastSubmitterConfig, OrderCache, OrderTemplate, SignedOrderData, SubmissionStats};
 pub use fill_manager::FillManager;
 pub use fill_poller::FillPoller;
 pub use gas_optimizer::GasOptimizer;
