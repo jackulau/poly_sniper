@@ -60,6 +60,15 @@ pub enum SystemEvent {
 
     /// Order replaced
     OrderReplaced(OrderReplacedEvent),
+
+    /// Smart money signal from top trader activity
+    SmartMoneySignal(SmartMoneySignalEvent),
+
+    /// Volume anomaly detected for a market
+    VolumeAnomalyDetected(VolumeAnomalyEvent),
+
+    /// Comment activity spike detected
+    CommentActivitySpike(CommentActivityEvent),
 }
 
 impl SystemEvent {
@@ -84,6 +93,9 @@ impl SystemEvent {
             SystemEvent::ResubmitTriggered(_) => "resubmit_triggered",
             SystemEvent::GasPriceUpdate(_) => "gas_price_update",
             SystemEvent::OrderReplaced(_) => "order_replaced",
+            SystemEvent::SmartMoneySignal(_) => "smart_money_signal",
+            SystemEvent::VolumeAnomalyDetected(_) => "volume_anomaly_detected",
+            SystemEvent::CommentActivitySpike(_) => "comment_activity_spike",
         }
     }
 
@@ -108,6 +120,9 @@ impl SystemEvent {
             SystemEvent::ResubmitTriggered(e) => e.timestamp,
             SystemEvent::GasPriceUpdate(e) => e.timestamp,
             SystemEvent::OrderReplaced(e) => e.timestamp,
+            SystemEvent::SmartMoneySignal(e) => e.timestamp,
+            SystemEvent::VolumeAnomalyDetected(e) => e.timestamp,
+            SystemEvent::CommentActivitySpike(e) => e.timestamp,
         }
     }
 
@@ -132,6 +147,9 @@ impl SystemEvent {
             SystemEvent::ResubmitTriggered(e) => Some(&e.market_id),
             SystemEvent::GasPriceUpdate(_) => None,
             SystemEvent::OrderReplaced(e) => Some(&e.market_id),
+            SystemEvent::SmartMoneySignal(e) => Some(&e.market_id),
+            SystemEvent::VolumeAnomalyDetected(e) => Some(&e.market_id),
+            SystemEvent::CommentActivitySpike(e) => Some(&e.market_id),
         }
     }
 }
@@ -526,5 +544,77 @@ pub struct OrderReplacedEvent {
     /// Reason for replacement
     pub reason: String,
     /// When the replacement occurred
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Type of action taken by a trader
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TraderAction {
+    /// Buying into a position
+    Buy,
+    /// Selling out of a position
+    Sell,
+    /// Opening a new position
+    NewPosition,
+    /// Closing an existing position
+    ClosePosition,
+}
+
+/// Smart money signal event from top trader activity
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartMoneySignalEvent {
+    /// Market ID
+    pub market_id: MarketId,
+    /// Token ID
+    pub token_id: TokenId,
+    /// Trader's address
+    pub trader_address: String,
+    /// Trader's username if available
+    pub trader_username: Option<String>,
+    /// Trader's leaderboard rank
+    pub trader_rank: u32,
+    /// Trader's total profit/PnL
+    pub trader_profit: Decimal,
+    /// Action taken by the trader
+    pub action: TraderAction,
+    /// Outcome being traded
+    pub outcome: crate::types::Outcome,
+    /// Size of the position in USD
+    pub size_usd: Decimal,
+    /// When the signal was generated
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Volume anomaly detected event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VolumeAnomalyEvent {
+    /// Market ID
+    pub market_id: MarketId,
+    /// Current volume in USD
+    pub current_volume: Decimal,
+    /// Average volume over lookback period
+    pub avg_volume: Decimal,
+    /// Ratio of current to average volume
+    pub volume_ratio: Decimal,
+    /// Number of trades in the period
+    pub trade_count: u32,
+    /// Net flow direction: positive = more buying, negative = more selling
+    pub net_flow: Option<Decimal>,
+    /// When the anomaly was detected
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Comment activity spike event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommentActivityEvent {
+    /// Market ID
+    pub market_id: MarketId,
+    /// Number of comments in the period
+    pub comment_count: u32,
+    /// Comments per hour velocity
+    pub comment_velocity: Decimal,
+    /// Brief sentiment hint from comments (if available)
+    pub sentiment_hint: Option<String>,
+    /// When the spike was detected
     pub timestamp: DateTime<Utc>,
 }

@@ -8,6 +8,7 @@ pub mod feed_types;
 pub mod gamma_client;
 pub mod market_cache;
 pub mod openrouter_client;
+pub mod polymarket_activity;
 pub mod resolution_monitor;
 pub mod rss_client;
 pub mod twitter_client;
@@ -22,6 +23,10 @@ pub use market_cache::MarketCache;
 pub use openrouter_client::{
     ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice, OpenRouterClient,
     OpenRouterConfig, ResponseFormat, ResponseMessage, Usage,
+};
+pub use polymarket_activity::{
+    PolymarketActivityClient, PolymarketActivityConfig, TraderPosition, TraderProfile,
+    VolumeSnapshot,
 };
 pub use resolution_monitor::ResolutionMonitor;
 pub use rss_client::RssClient;

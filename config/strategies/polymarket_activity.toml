@@ -1,0 +1,55 @@
+# Polymarket Activity Strategy Configuration
+#
+# This strategy tracks Polymarket-specific signals:
+# - Smart money: Top trader positions and movements
+# - Volume anomalies: Unusual volume patterns
+# - Comment activity: Spikes in market discussion
+
+[polymarket_activity]
+enabled = true
+max_entry_price = 0.90
+signal_priority = "High"
+
+# Smart Money Tracking
+# Follow positions of top traders on the leaderboard
+[polymarket_activity.smart_money_tracking]
+enabled = true
+# Only track traders in top N on leaderboard
+min_trader_rank = 100
+# Minimum position size in USD to trigger signal
+min_position_size_usd = 1000.0
+# How aggressively to follow (0.0-1.0)
+# Lower = smaller follow positions, higher = larger
+follow_strength = 0.5
+# Cooldown between signals for same market (seconds)
+cooldown_secs = 600
+# Base order size in USD for follow trades
+order_size_usd = 25.0
+
+# Volume Anomaly Detection
+# Detect and trade on unusual volume spikes
+[polymarket_activity.volume_anomaly]
+enabled = true
+# Minimum ratio of current to average volume to trigger
+# e.g., 3.0 = 3x normal volume
+min_volume_ratio = 3.0
+# Number of periods to calculate average volume
+lookback_periods = 24
+# Cooldown between signals for same market (seconds)
+cooldown_secs = 300
+# Order size in USD
+order_size_usd = 50.0
+
+# Comment Activity Detection
+# Detect spikes in market discussion activity
+# NOTE: Requires API access to comment data
+[polymarket_activity.comment_activity]
+enabled = false
+# Minimum comments per hour to trigger signal
+min_comments_per_hour = 10
+# Weight given to sentiment analysis (0.0-1.0)
+sentiment_weight = 0.3
+# Cooldown between signals for same market (seconds)
+cooldown_secs = 600
+# Order size in USD
+order_size_usd = 25.0

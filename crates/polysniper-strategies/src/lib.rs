@@ -10,6 +10,7 @@ pub mod ml_processor;
 pub mod multi_leg;
 pub mod new_market;
 pub mod orderbook_imbalance;
+pub mod polymarket_activity;
 pub mod price_spike;
 pub mod resolution_exit;
 pub mod sentiment_analyzer;
@@ -27,6 +28,10 @@ pub use multi_leg::{
 pub use new_market::{NewMarketConfig, NewMarketStrategy};
 pub use orderbook_imbalance::{OrderbookImbalanceConfig, OrderbookImbalanceStrategy};
 pub use price_spike::{PriceSpikeConfig, PriceSpikeStrategy};
+pub use polymarket_activity::{
+    CommentActivityConfig, PolymarketActivityStrategy, PolymarketActivityStrategyConfig,
+    SmartMoneyConfig, VolumeAnomalyConfig,
+};
 pub use resolution_exit::ResolutionExitStrategy;
 pub use sentiment_analyzer::SentimentAnalyzer;
 pub use sentiment_strategy::{SentimentMarketMapping, SentimentStrategy, SentimentStrategyConfig};
