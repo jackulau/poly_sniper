@@ -106,12 +106,10 @@ impl ResolutionConfig {
     /// Check if a warning should be emitted for the given time remaining
     pub fn should_emit_warning(&self, time_remaining_secs: i64) -> Option<u64> {
         // Find the highest threshold that we're at or below
-        for &threshold in &self.warning_thresholds_secs {
-            if time_remaining_secs <= threshold as i64 && time_remaining_secs > 0 {
-                return Some(threshold);
-            }
-        }
-        None
+        self.warning_thresholds_secs
+            .iter()
+            .find(|&&threshold| time_remaining_secs <= threshold as i64 && time_remaining_secs > 0)
+            .copied()
     }
 }
 

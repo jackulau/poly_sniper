@@ -3,6 +3,7 @@
 //! Splits orders proportionally to historical or expected volume patterns.
 
 use super::{ChildOrder, ExecutionStats};
+use crate::shortfall_tracker::{ShortfallRecord, ShortfallTracker};
 use chrono::{DateTime, Duration, Utc};
 use polysniper_core::{Side, TradeSignal};
 use rand::Rng;
@@ -166,8 +167,10 @@ pub struct VwapState {
     pub parent_id: String,
     /// Configuration used
     pub config: VwapConfig,
-    /// Reference price at start
+    /// Reference price at start (decision price for shortfall calculation)
     pub reference_price: Decimal,
+    /// Decision time when signal was generated
+    pub decision_time: DateTime<Utc>,
     /// Volume weights for each slice
     pub weights: Vec<Decimal>,
     /// Child orders in this execution
@@ -188,12 +191,19 @@ pub struct VwapState {
     pub cancelled: bool,
     /// Real-time volume observed (for adaptive mode)
     pub observed_volume: Vec<Decimal>,
+    /// Order side for shortfall calculation
+    pub side: Side,
+    /// Arrival price (mid-price at execution start)
+    pub arrival_price: Option<Decimal>,
+    /// Current speed adjustment from shortfall tracking
+    pub speed_adjustment: Decimal,
 }
 
 /// VWAP Executor for managing VWAP executions
 pub struct VwapExecutor {
     config: VwapConfig,
     active_orders: Arc<RwLock<HashMap<String, VwapState>>>,
+    shortfall_tracker: Arc<ShortfallTracker>,
 }
 
 impl VwapExecutor {
@@ -202,6 +212,7 @@ impl VwapExecutor {
         Self {
             config: VwapConfig::default(),
             active_orders: Arc::new(RwLock::new(HashMap::new())),
+            shortfall_tracker: Arc::new(ShortfallTracker::new()),
         }
     }
 
@@ -210,7 +221,22 @@ impl VwapExecutor {
         Self {
             config,
             active_orders: Arc::new(RwLock::new(HashMap::new())),
+            shortfall_tracker: Arc::new(ShortfallTracker::new()),
         }
+    }
+
+    /// Create a new VWAP executor with custom configuration and shortfall tracker
+    pub fn with_config_and_tracker(config: VwapConfig, shortfall_tracker: Arc<ShortfallTracker>) -> Self {
+        Self {
+            config,
+            active_orders: Arc::new(RwLock::new(HashMap::new())),
+            shortfall_tracker,
+        }
+    }
+
+    /// Get the shortfall tracker
+    pub fn shortfall_tracker(&self) -> &Arc<ShortfallTracker> {
+        &self.shortfall_tracker
     }
 
     /// Create execution schedule from a trade signal
@@ -279,6 +305,16 @@ impl VwapExecutor {
 
     /// Start a new VWAP execution for a signal
     pub async fn start_execution(&self, signal: &TradeSignal, reference_price: Decimal) -> String {
+        self.start_execution_with_arrival(signal, reference_price, None).await
+    }
+
+    /// Start a new VWAP execution for a signal with arrival price
+    pub async fn start_execution_with_arrival(
+        &self,
+        signal: &TradeSignal,
+        reference_price: Decimal,
+        arrival_price: Option<Decimal>,
+    ) -> String {
         let weights = self.config.volume_profile.calculate_weights(self.config.num_slices);
         let child_orders = self.create_schedule(signal, reference_price);
         let now = Utc::now();
@@ -287,6 +323,7 @@ impl VwapExecutor {
             parent_id: signal.id.clone(),
             config: self.config.clone(),
             reference_price,
+            decision_time: signal.timestamp,
             weights,
             end_time: now + Duration::seconds(self.config.total_duration_secs as i64),
             started_at: now,
@@ -297,18 +334,34 @@ impl VwapExecutor {
             cancelled: false,
             child_orders,
             observed_volume: vec![Decimal::ZERO; self.config.num_slices as usize],
+            side: signal.side,
+            arrival_price,
+            speed_adjustment: Decimal::ONE,
         };
 
         let parent_id = signal.id.clone();
         self.active_orders.write().await.insert(parent_id.clone(), state);
 
+        // Start shortfall tracking
+        self.shortfall_tracker
+            .start_tracking(
+                parent_id.clone(),
+                reference_price,
+                signal.timestamp,
+                signal.side,
+                signal.size,
+                arrival_price,
+            )
+            .await;
+
         info!(
             parent_id = %signal.id,
             total_size = %signal.size,
             reference_price = %reference_price,
+            decision_time = %signal.timestamp,
             num_slices = self.config.num_slices,
             profile = ?self.config.volume_profile,
-            "Started VWAP execution"
+            "Started VWAP execution with shortfall tracking"
         );
 
         parent_id
@@ -362,6 +415,18 @@ impl VwapExecutor {
 
     /// Record a fill for a child order
     pub async fn record_fill(&self, parent_id: &str, child_id: &str, filled_size: Decimal, fill_price: Decimal) {
+        self.record_fill_with_market_price(parent_id, child_id, filled_size, fill_price, None).await;
+    }
+
+    /// Record a fill for a child order with current market mid-price
+    pub async fn record_fill_with_market_price(
+        &self,
+        parent_id: &str,
+        child_id: &str,
+        filled_size: Decimal,
+        fill_price: Decimal,
+        current_mid_price: Option<Decimal>,
+    ) {
         let mut orders = self.active_orders.write().await;
         if let Some(state) = orders.get_mut(parent_id) {
             // Update child order
@@ -382,14 +447,25 @@ impl VwapExecutor {
             state.total_cost += filled_size * fill_price;
             state.num_fills += 1;
 
+            // Record to shortfall tracker
+            drop(orders); // Release lock before async call
+            self.shortfall_tracker
+                .record_fill(parent_id, filled_size, fill_price, current_mid_price)
+                .await;
+
+            // Update speed adjustment from shortfall tracker
+            let speed_adjustment = self.shortfall_tracker.get_speed_adjustment(parent_id).await;
+            if let Some(state) = self.active_orders.write().await.get_mut(parent_id) {
+                state.speed_adjustment = speed_adjustment;
+            }
+
             info!(
                 parent_id = %parent_id,
                 child_id = %child_id,
                 filled_size = %filled_size,
                 fill_price = %fill_price,
-                total_executed = %state.executed_size,
-                remaining = %(state.total_size - state.executed_size),
-                "Recorded VWAP fill"
+                speed_adjustment = %speed_adjustment,
+                "Recorded VWAP fill with shortfall tracking"
             );
         }
     }
@@ -471,8 +547,103 @@ impl VwapExecutor {
         let mut orders = self.active_orders.write().await;
         if let Some(state) = orders.get_mut(parent_id) {
             state.cancelled = true;
+            drop(orders);
+            // Cancel shortfall tracking
+            self.shortfall_tracker.cancel(parent_id).await;
             info!(parent_id = %parent_id, "Cancelled VWAP execution");
         }
+    }
+
+    /// Get the shortfall record for an execution
+    pub async fn get_shortfall(&self, parent_id: &str) -> Option<ShortfallRecord> {
+        self.shortfall_tracker.get_record(parent_id).await
+    }
+
+    /// Get the current speed adjustment recommendation
+    pub async fn get_speed_adjustment(&self, parent_id: &str) -> Decimal {
+        self.active_orders
+            .read()
+            .await
+            .get(parent_id)
+            .map(|s| s.speed_adjustment)
+            .unwrap_or(Decimal::ONE)
+    }
+
+    /// Update market price for shortfall calculation
+    pub async fn update_market_price(&self, parent_id: &str, current_mid_price: Decimal) {
+        self.shortfall_tracker
+            .update_market_price(parent_id, current_mid_price)
+            .await;
+
+        // Update speed adjustment
+        let speed_adjustment = self.shortfall_tracker.get_speed_adjustment(parent_id).await;
+        if let Some(state) = self.active_orders.write().await.get_mut(parent_id) {
+            state.speed_adjustment = speed_adjustment;
+        }
+    }
+
+    /// Apply adaptive execution speed adjustment to remaining orders
+    ///
+    /// This method reschedules remaining unsubmitted orders based on the current
+    /// speed adjustment from shortfall tracking. A speed adjustment > 1.0 means
+    /// faster execution (shorter intervals), while < 1.0 means slower execution.
+    pub async fn apply_speed_adjustment(&self, parent_id: &str) {
+        let mut orders = self.active_orders.write().await;
+        if let Some(state) = orders.get_mut(parent_id) {
+            let speed = state.speed_adjustment;
+            if speed == Decimal::ONE {
+                return; // No adjustment needed
+            }
+
+            let now = Utc::now();
+            let remaining_orders: Vec<usize> = state
+                .child_orders
+                .iter()
+                .enumerate()
+                .filter(|(_, o)| !o.submitted && o.scheduled_at > now)
+                .map(|(i, _)| i)
+                .collect();
+
+            if remaining_orders.is_empty() {
+                return;
+            }
+
+            // Calculate base interval
+            let base_interval_secs = state.config.total_duration_secs / state.config.num_slices as u64;
+            // Adjust interval: higher speed = shorter interval
+            let adjusted_interval_secs = if speed > Decimal::ZERO {
+                let adjusted = Decimal::from(base_interval_secs) / speed;
+                adjusted.to_string().parse::<f64>().unwrap_or(base_interval_secs as f64) as i64
+            } else {
+                base_interval_secs as i64
+            };
+
+            // Reschedule remaining orders
+            for (offset, &idx) in remaining_orders.iter().enumerate() {
+                let new_time = now + Duration::seconds(adjusted_interval_secs * (offset as i64 + 1));
+                state.child_orders[idx].scheduled_at = new_time;
+            }
+
+            debug!(
+                parent_id = %parent_id,
+                speed_adjustment = %speed,
+                remaining_orders = remaining_orders.len(),
+                adjusted_interval_secs,
+                "Applied adaptive VWAP execution speed adjustment"
+            );
+        }
+    }
+
+    /// Get next order with adaptive timing consideration
+    ///
+    /// This checks for speed adjustment and may reschedule remaining orders
+    /// before returning the next order.
+    pub async fn get_next_order_adaptive(&self, parent_id: &str) -> Option<ChildOrder> {
+        // First apply any speed adjustment
+        self.apply_speed_adjustment(parent_id).await;
+
+        // Then get the next order
+        self.get_next_order(parent_id).await
     }
 
     /// Get execution statistics
@@ -502,6 +673,27 @@ impl VwapExecutor {
             .filter(|o| o.is_filled())
             .count() as u32;
 
+        let speed_adjustment = state.speed_adjustment;
+        drop(orders); // Release lock before async call
+
+        // Get shortfall info
+        let shortfall_record = self.shortfall_tracker.get_record(parent_id).await;
+        let (shortfall_bps, timing_delay_bps, market_impact_bps, spread_cost_bps, opportunity_cost_bps) =
+            if let Some(ref record) = shortfall_record {
+                (
+                    Some(record.shortfall_bps),
+                    Some(record.components.timing_delay_bps),
+                    Some(record.components.market_impact_bps),
+                    Some(record.components.spread_cost_bps),
+                    Some(record.components.opportunity_cost_bps),
+                )
+            } else {
+                (None, None, None, None, None)
+            };
+
+        let orders = self.active_orders.read().await;
+        let state = orders.get(parent_id)?;
+
         Some(ExecutionStats {
             parent_id: parent_id.to_string(),
             algorithm: "VWAP".to_string(),
@@ -522,6 +714,12 @@ impl VwapExecutor {
             } else {
                 None
             },
+            shortfall_bps,
+            shortfall_timing_delay_bps: timing_delay_bps,
+            shortfall_market_impact_bps: market_impact_bps,
+            shortfall_spread_cost_bps: spread_cost_bps,
+            shortfall_opportunity_cost_bps: opportunity_cost_bps,
+            speed_adjustment: Some(speed_adjustment),
         })
     }
 

@@ -515,7 +515,7 @@ impl GasPriceUpdateEvent {
 
     /// Check if the gas condition changed
     pub fn condition_changed(&self) -> bool {
-        self.previous_condition.map_or(false, |prev| prev != self.condition)
+        self.previous_condition.is_some_and(|prev| prev != self.condition)
     }
 }
 

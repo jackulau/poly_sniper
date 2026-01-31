@@ -13,6 +13,7 @@ pub mod order_builder;
 pub mod order_manager;
 pub mod price_level_analyzer;
 pub mod queue_estimator;
+pub mod shortfall_tracker;
 pub mod submitter;
 
 pub use algorithms::{
@@ -32,4 +33,8 @@ pub use order_builder::OrderBuilder;
 pub use order_manager::OrderManager;
 pub use price_level_analyzer::{PriceLevelAnalyzer, PriceLevelStats};
 pub use queue_estimator::{FillProbability, ProbabilityComponents, ProbabilityMethod, QueueEstimator, QueuePositionState};
+pub use queue_estimator::QueueEstimator;
+pub use shortfall_tracker::{
+    ShortfallComponents, ShortfallConfig, ShortfallRecord, ShortfallSummary, ShortfallTracker,
+};
 pub use submitter::OrderSubmitter;

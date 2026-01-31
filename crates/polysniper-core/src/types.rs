@@ -563,6 +563,39 @@ impl Default for RiskConfig {
     }
 }
 
+/// Shortfall tracking and adaptive execution configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShortfallConfig {
+    /// Enable shortfall tracking
+    pub enabled: bool,
+    /// Shortfall threshold in basis points to trigger faster execution
+    pub adverse_threshold_bps: Decimal,
+    /// Shortfall threshold in basis points for favorable price movement
+    pub favorable_threshold_bps: Decimal,
+    /// Speed multiplier when experiencing adverse selection
+    pub adverse_speed_multiplier: Decimal,
+    /// Speed multiplier when price is favorable
+    pub favorable_speed_multiplier: Decimal,
+    /// Minimum speed multiplier (can't go slower than this)
+    pub min_speed_multiplier: Decimal,
+    /// Maximum speed multiplier (can't go faster than this)
+    pub max_speed_multiplier: Decimal,
+}
+
+impl Default for ShortfallConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            adverse_threshold_bps: Decimal::new(20, 0),   // 20 bps
+            favorable_threshold_bps: Decimal::new(10, 0), // 10 bps
+            adverse_speed_multiplier: Decimal::new(15, 1), // 1.5x
+            favorable_speed_multiplier: Decimal::new(7, 1), // 0.7x
+            min_speed_multiplier: Decimal::new(5, 1),     // 0.5x
+            max_speed_multiplier: Decimal::new(2, 0),     // 2.0x
+        }
+    }
+}
+
 /// Execution configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionConfig {
@@ -571,6 +604,8 @@ pub struct ExecutionConfig {
     pub retry_delay_ms: u64,
     #[serde(default)]
     pub queue_estimation: QueueEstimatorConfig,
+    #[serde(default)]
+    pub shortfall: ShortfallConfig,
 }
 
 impl Default for ExecutionConfig {
@@ -580,6 +615,7 @@ impl Default for ExecutionConfig {
             max_retries: 3,
             retry_delay_ms: 100,
             queue_estimation: QueueEstimatorConfig::default(),
+            shortfall: ShortfallConfig::default(),
         }
     }
 }
@@ -896,21 +932,16 @@ impl Default for AdaptiveSizingConfig {
 }
 
 /// Order type for exit orders
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ExitOrderType {
     /// Fill-or-kill market order
+    #[default]
     Fok,
     /// Good-til-cancelled limit order
     Gtc,
     /// Market order (executed as FOK)
     Market,
-}
-
-impl Default for ExitOrderType {
-    fn default() -> Self {
-        ExitOrderType::Fok
-    }
 }
 
 /// Type of P&L floor for exit decisions
