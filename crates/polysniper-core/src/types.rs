@@ -286,6 +286,52 @@ impl Default for VolatilityConfig {
     }
 }
 
+/// Drawdown-triggered position scaling configuration
+///
+/// Progressively reduces position sizes as portfolio drawdown deepens,
+/// providing smooth risk reduction rather than binary halt/resume.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DrawdownConfig {
+    /// Whether drawdown-based scaling is enabled
+    pub enabled: bool,
+    /// Tier 1 threshold: drawdown percentage at which first reduction begins (e.g., 5.0 = 5%)
+    pub tier_1_threshold_pct: Decimal,
+    /// Tier 1 multiplier: size factor at tier 1 threshold (e.g., 0.75 = 75% of normal)
+    pub tier_1_multiplier: Decimal,
+    /// Tier 2 threshold: drawdown percentage for second tier (e.g., 10.0 = 10%)
+    pub tier_2_threshold_pct: Decimal,
+    /// Tier 2 multiplier: size factor at tier 2 threshold (e.g., 0.50 = 50% of normal)
+    pub tier_2_multiplier: Decimal,
+    /// Tier 3 threshold: drawdown percentage for third tier (e.g., 20.0 = 20%)
+    pub tier_3_threshold_pct: Decimal,
+    /// Tier 3 multiplier: size factor at tier 3 threshold (e.g., 0.25 = 25% of normal)
+    pub tier_3_multiplier: Decimal,
+    /// Maximum drawdown percentage before minimum sizing or halt (e.g., 30.0 = 30%)
+    pub max_drawdown_pct: Decimal,
+    /// Minimum size multiplier floor (e.g., 0.10 = 10% of normal size)
+    pub min_multiplier: Decimal,
+    /// Recovery buffer: percentage below current drawdown level before increasing sizes again
+    /// This provides hysteresis to prevent rapid oscillation during volatile recovery periods
+    pub recovery_buffer_pct: Decimal,
+}
+
+impl Default for DrawdownConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            tier_1_threshold_pct: Decimal::new(5, 0),   // 5%
+            tier_1_multiplier: Decimal::new(75, 2),    // 0.75
+            tier_2_threshold_pct: Decimal::new(10, 0),  // 10%
+            tier_2_multiplier: Decimal::new(50, 2),    // 0.50
+            tier_3_threshold_pct: Decimal::new(20, 0),  // 20%
+            tier_3_multiplier: Decimal::new(25, 2),    // 0.25
+            max_drawdown_pct: Decimal::new(30, 0),      // 30%
+            min_multiplier: Decimal::new(10, 2),       // 0.10
+            recovery_buffer_pct: Decimal::new(2, 0),    // 2%
+        }
+    }
+}
+
 /// Action to take when a time-based rule is triggered
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TimeRuleAction {
@@ -425,6 +471,9 @@ pub struct RiskConfig {
     /// Correlation-aware position limit configuration
     #[serde(default)]
     pub correlation: CorrelationConfig,
+    /// Drawdown-triggered position scaling config
+    #[serde(default)]
+    pub drawdown: DrawdownConfig,
 }
 
 impl Default for RiskConfig {
@@ -438,6 +487,7 @@ impl Default for RiskConfig {
             volatility: VolatilityConfig::default(),
             time_rules: TimeRulesConfig::default(),
             correlation: CorrelationConfig::default(),
+            drawdown: DrawdownConfig::default(),
         }
     }
 }
