@@ -61,6 +61,11 @@ impl RiskManager {
         &self.time_rule_engine
     }
 
+    /// Get a reference to the correlation tracker
+    pub fn correlation_tracker(&self) -> &CorrelationTracker {
+        &self.correlation_tracker
+    }
+
     /// Check time rules for a signal and market
     ///
     /// Returns Ok(Some(decision)) if a time rule requires action,
@@ -644,6 +649,8 @@ mod tests {
             daily_loss_limit_usd: dec!(500),
             circuit_breaker_loss_usd: dec!(300),
             max_orders_per_minute: 60,
+            volatility: Default::default(),
+            time_rules: Default::default(),
             correlation: CorrelationConfig {
                 enabled: true,
                 correlation_threshold: dec!(0.7),

@@ -94,6 +94,30 @@ lazy_static! {
         "Number of lagged messages in event bus"
     ).unwrap();
 
+    // Lock-free event bus metrics
+    pub static ref EVENT_BUS_QUEUE_DEPTH: GaugeVec = GaugeVec::new(
+        Opts::new("polysniper_event_bus_queue_depth", "Current queue depth per subscriber"),
+        &["subscriber_id"]
+    ).unwrap();
+
+    pub static ref EVENT_BUS_DROPPED: IntCounter = IntCounter::new(
+        "polysniper_event_bus_dropped_total",
+        "Total events dropped due to backpressure"
+    ).unwrap();
+
+    pub static ref EVENT_BUS_PUBLISH_LATENCY: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "polysniper_event_bus_publish_latency_seconds",
+            "Event bus publish latency in seconds"
+        ).buckets(vec![0.000001, 0.000005, 0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01]),
+        &["event_type"]
+    ).unwrap();
+
+    pub static ref EVENT_BUS_SUBSCRIBER_COUNT: IntGauge = IntGauge::new(
+        "polysniper_event_bus_subscriber_count",
+        "Current number of event bus subscribers"
+    ).unwrap();
+
     // Strategy metrics
     pub static ref STRATEGY_PROCESSING_DURATION: HistogramVec = HistogramVec::new(
         HistogramOpts::new(
@@ -200,6 +224,18 @@ pub fn register_metrics() {
         .register(Box::new(EVENT_PROCESSING_DURATION.clone()))
         .ok();
     REGISTRY.register(Box::new(EVENT_BUS_LAG.clone())).ok();
+
+    // Lock-free event bus metrics
+    REGISTRY
+        .register(Box::new(EVENT_BUS_QUEUE_DEPTH.clone()))
+        .ok();
+    REGISTRY.register(Box::new(EVENT_BUS_DROPPED.clone())).ok();
+    REGISTRY
+        .register(Box::new(EVENT_BUS_PUBLISH_LATENCY.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(EVENT_BUS_SUBSCRIBER_COUNT.clone()))
+        .ok();
 
     // Strategy metrics
     REGISTRY
@@ -373,6 +409,30 @@ pub fn record_alert_failure(channel: &str) {
 /// Update uptime
 pub fn update_uptime(seconds: i64) {
     UPTIME_SECONDS.set(seconds);
+}
+
+/// Update event bus queue depth for a subscriber
+pub fn update_event_bus_queue_depth(subscriber_id: &str, depth: f64) {
+    EVENT_BUS_QUEUE_DEPTH
+        .with_label_values(&[subscriber_id])
+        .set(depth);
+}
+
+/// Record event dropped from event bus
+pub fn record_event_bus_dropped(count: u64) {
+    EVENT_BUS_DROPPED.inc_by(count);
+}
+
+/// Record event bus publish latency
+pub fn record_event_bus_publish_latency(event_type: &str, latency_secs: f64) {
+    EVENT_BUS_PUBLISH_LATENCY
+        .with_label_values(&[event_type])
+        .observe(latency_secs);
+}
+
+/// Update event bus subscriber count
+pub fn update_event_bus_subscriber_count(count: i64) {
+    EVENT_BUS_SUBSCRIBER_COUNT.set(count);
 }
 
 /// Configuration for metrics
