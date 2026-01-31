@@ -438,6 +438,173 @@ impl MlSignalProcessor {
     pub fn update_config(&mut self, config: MlConfig) {
         self.config = config;
     }
+
+    /// Process an ML signal using adaptive parameters from online learning
+    ///
+    /// This method uses the OnlineLearner to get adaptive confidence thresholds
+    /// and weights that have been learned from past trade outcomes.
+    pub async fn process_signal_with_learning(
+        &self,
+        signal: &ExternalSignalEvent,
+        learner: &crate::online_learning::OnlineLearner,
+    ) -> Option<MlProcessingResult> {
+        // Check if ML processing is enabled
+        if !self.config.enabled {
+            debug!("ML processing is disabled");
+            return None;
+        }
+
+        // Check if this is an ML signal
+        if !self.is_ml_signal(signal) {
+            return None;
+        }
+
+        // Parse prediction
+        let prediction = self.parse_prediction(signal)?;
+
+        // Check if prediction is expired
+        if prediction.is_expired() {
+            info!(
+                prediction_id = %prediction.id,
+                model_id = %prediction.model_id,
+                "ML prediction is expired, skipping"
+            );
+            return Some(MlProcessingResult {
+                should_execute: false,
+                rejection_reason: Some("Prediction expired".to_string()),
+                size_multiplier: Decimal::ZERO,
+                prediction,
+                suggested_outcome: Outcome::Yes,
+            });
+        }
+
+        // Get adaptive parameters from online learner (or defaults)
+        let adaptive_params = learner
+            .get_adaptive_params(&prediction.model_id)
+            .await
+            .unwrap_or_else(|| learner.default_params());
+
+        // Get model-specific config (or defaults)
+        let model_config = self.config.model_configs.get(&prediction.model_id);
+
+        // Check if model is enabled
+        if let Some(cfg) = model_config {
+            if !cfg.enabled {
+                info!(
+                    model_id = %prediction.model_id,
+                    "Model is disabled, skipping signal"
+                );
+                return Some(MlProcessingResult {
+                    should_execute: false,
+                    rejection_reason: Some(format!("Model {} is disabled", prediction.model_id)),
+                    size_multiplier: Decimal::ZERO,
+                    prediction,
+                    suggested_outcome: Outcome::Yes,
+                });
+            }
+        }
+
+        // Use adaptive threshold if learning is active, otherwise use config threshold
+        let min_confidence = if adaptive_params.adaptation_active {
+            adaptive_params.confidence_threshold
+        } else {
+            model_config
+                .and_then(|c| c.min_confidence)
+                .unwrap_or(self.config.min_confidence)
+        };
+
+        if !prediction.meets_threshold(min_confidence) {
+            info!(
+                prediction_id = %prediction.id,
+                model_id = %prediction.model_id,
+                confidence = %prediction.confidence,
+                min_confidence = %min_confidence,
+                adaptive = adaptive_params.adaptation_active,
+                "ML prediction below confidence threshold"
+            );
+            return Some(MlProcessingResult {
+                should_execute: false,
+                rejection_reason: Some(format!(
+                    "Confidence {} below threshold {}{}",
+                    prediction.confidence,
+                    min_confidence,
+                    if adaptive_params.adaptation_active { " (adaptive)" } else { "" }
+                )),
+                size_multiplier: Decimal::ZERO,
+                prediction,
+                suggested_outcome: Outcome::Yes,
+            });
+        }
+
+        // Check cooldown
+        if let Some(rejection) = self.check_cooldown(&prediction, model_config).await {
+            return Some(MlProcessingResult {
+                should_execute: false,
+                rejection_reason: Some(rejection),
+                size_multiplier: Decimal::ZERO,
+                prediction,
+                suggested_outcome: Outcome::Yes,
+            });
+        }
+
+        // Check daily limit
+        if let Some(rejection) = self.check_daily_limit(&prediction, model_config).await {
+            return Some(MlProcessingResult {
+                should_execute: false,
+                rejection_reason: Some(rejection),
+                size_multiplier: Decimal::ZERO,
+                prediction,
+                suggested_outcome: Outcome::Yes,
+            });
+        }
+
+        // Calculate base size multiplier
+        let base_multiplier = self.calculate_size_multiplier(&prediction, model_config);
+
+        // Apply adaptive weight if learning is active
+        let size_multiplier = if adaptive_params.adaptation_active {
+            (base_multiplier * adaptive_params.weight)
+                .max(self.config.min_size_multiplier)
+                .min(self.config.max_size_multiplier)
+        } else {
+            base_multiplier
+        };
+
+        // Determine suggested outcome from prediction
+        let suggested_outcome = self.prediction_to_outcome(&prediction);
+
+        // Record the signal in both places
+        self.record_signal(&prediction).await;
+
+        // Also record in online learner for tracking
+        learner
+            .record_prediction(
+                &prediction.model_id,
+                &prediction.id,
+                prediction.confidence,
+                suggested_outcome,
+            )
+            .await;
+
+        info!(
+            prediction_id = %prediction.id,
+            model_id = %prediction.model_id,
+            confidence = %prediction.confidence,
+            size_multiplier = %size_multiplier,
+            adaptive_weight = %adaptive_params.weight,
+            ema_accuracy = %adaptive_params.ema_accuracy,
+            outcome = ?suggested_outcome,
+            "ML prediction accepted (with learning)"
+        );
+
+        Some(MlProcessingResult {
+            should_execute: true,
+            rejection_reason: None,
+            size_multiplier,
+            prediction,
+            suggested_outcome,
+        })
+    }
 }
 
 /// Builder for MlProcessingResult (for testing)

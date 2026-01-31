@@ -70,6 +70,8 @@ pub enum SystemEvent {
     Microstructure(MicrostructureEvent),
     /// News velocity signal (acceleration/deceleration in coverage)
     NewsVelocitySignal(NewsVelocitySignalEvent),
+    /// Market resolved with final outcome
+    MarketResolved(MarketResolvedEvent),
 }
 
 impl SystemEvent {
@@ -98,6 +100,7 @@ impl SystemEvent {
             SystemEvent::CryptoPriceUpdate(_) => "crypto_price_update",
             SystemEvent::Microstructure(e) => e.event_type(),
             SystemEvent::NewsVelocitySignal(_) => "news_velocity_signal",
+            SystemEvent::MarketResolved(_) => "market_resolved",
         }
     }
 
@@ -126,6 +129,7 @@ impl SystemEvent {
             SystemEvent::CryptoPriceUpdate(e) => e.timestamp,
             SystemEvent::Microstructure(e) => e.timestamp(),
             SystemEvent::NewsVelocitySignal(e) => e.timestamp,
+            SystemEvent::MarketResolved(e) => e.resolved_at,
         }
     }
 
@@ -154,6 +158,7 @@ impl SystemEvent {
             SystemEvent::CryptoPriceUpdate(_) => None,
             SystemEvent::Microstructure(e) => e.market_id(),
             SystemEvent::NewsVelocitySignal(e) => e.market_ids.first(),
+            SystemEvent::MarketResolved(e) => Some(&e.market_id),
         }
     }
 }
@@ -656,6 +661,23 @@ impl std::fmt::Display for ToxicityLevel {
             ToxicityLevel::Normal => write!(f, "Normal"),
             ToxicityLevel::Elevated => write!(f, "Elevated"),
             ToxicityLevel::High => write!(f, "High"),
+/// Market resolution outcome
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MarketOutcome {
+    /// Market resolved YES
+    Yes,
+    /// Market resolved NO
+    No,
+    /// Market was voided/cancelled
+    Voided,
+}
+
+impl std::fmt::Display for MarketOutcome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MarketOutcome::Yes => write!(f, "YES"),
+            MarketOutcome::No => write!(f, "NO"),
+            MarketOutcome::Voided => write!(f, "VOIDED"),
         }
     }
 }
@@ -1191,5 +1213,61 @@ impl NewsVelocitySignalEvent {
             sample_headlines,
             timestamp: Utc::now(),
         }
+/// Market resolved event for outcome tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketResolvedEvent {
+    /// Market condition ID
+    pub market_id: MarketId,
+    /// Human-readable market question
+    pub market_question: Option<String>,
+    /// Final market outcome
+    pub outcome: MarketOutcome,
+    /// Final YES token price (should be 0 or 1 after resolution)
+    pub final_yes_price: Option<Decimal>,
+    /// Final NO token price (should be 0 or 1 after resolution)
+    pub final_no_price: Option<Decimal>,
+    /// When the market was resolved
+    pub resolved_at: DateTime<Utc>,
+    /// Additional metadata
+    pub metadata: Option<serde_json::Value>,
+}
+
+impl MarketResolvedEvent {
+    /// Create a new market resolved event
+    pub fn new(
+        market_id: MarketId,
+        outcome: MarketOutcome,
+        market_question: Option<String>,
+    ) -> Self {
+        let (final_yes_price, final_no_price) = match outcome {
+            MarketOutcome::Yes => (Some(Decimal::ONE), Some(Decimal::ZERO)),
+            MarketOutcome::No => (Some(Decimal::ZERO), Some(Decimal::ONE)),
+            MarketOutcome::Voided => (None, None),
+        };
+
+        Self {
+            market_id,
+            market_question,
+            outcome,
+            final_yes_price,
+            final_no_price,
+            resolved_at: Utc::now(),
+            metadata: None,
+        }
+    }
+
+    /// Check if the market resolved to YES
+    pub fn is_yes(&self) -> bool {
+        self.outcome == MarketOutcome::Yes
+    }
+
+    /// Check if the market resolved to NO
+    pub fn is_no(&self) -> bool {
+        self.outcome == MarketOutcome::No
+    }
+
+    /// Check if the market was voided
+    pub fn is_voided(&self) -> bool {
+        self.outcome == MarketOutcome::Voided
     }
 }

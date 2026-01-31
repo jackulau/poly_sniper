@@ -21,4 +21,5 @@ anyhow.workspace = true
 tracing.workspace = true
 chrono.workspace = true
 uuid.workspace = true
+rand.workspace = true
 lru = "0.12"

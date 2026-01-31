@@ -2,6 +2,7 @@
 
 mod alerts;
 mod daily_pnl;
+mod model_learning;
 mod orders;
 mod performance_metrics;
 mod position_history;
@@ -12,6 +13,7 @@ mod trades;
 
 pub use alerts::AlertRepository;
 pub use daily_pnl::DailyPnlRepository;
+pub use model_learning::{ModelAccuracySummary, ModelLearningRepository};
 pub use orders::OrderRepository;
 pub use performance_metrics::{EquityPoint, PerformanceMetrics, PerformanceMetricsRepository};
 pub use position_history::{PositionHistoryRecord, PositionHistoryRepository, PositionSummary};

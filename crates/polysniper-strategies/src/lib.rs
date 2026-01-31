@@ -5,6 +5,7 @@
 pub mod arbitrage;
 pub mod cross_asset;
 pub mod ensemble;
+pub mod calibration;
 pub mod event_based;
 pub mod liquidity_provision;
 pub mod llm_prediction;
@@ -13,6 +14,7 @@ pub mod ml_processor;
 pub mod multi_leg;
 pub mod new_market;
 pub mod news_velocity;
+pub mod online_learning;
 pub mod orderbook_imbalance;
 pub mod price_spike;
 pub mod resolution_exit;
@@ -25,6 +27,13 @@ pub mod whale_detector;
 pub use arbitrage::{ArbitrageConfig, ArbitrageStrategy};
 pub use cross_asset::{AssetCorrelation, CorrelationType, CrossAssetConfig, CrossAssetStrategy};
 pub use ensemble::{EnsembleError, EnsembleOrchestrator};
+pub mod thompson_sampling;
+
+pub use arbitrage::{ArbitrageConfig, ArbitrageStrategy};
+pub use calibration::{
+    BrierDecomposition, CalibrationAnalyzer, CalibrationAssessment, CalibrationBin,
+    CalibrationMetrics, ReliabilityPoint,
+};
 pub use event_based::{EventBasedConfig, EventBasedStrategy};
 pub use liquidity_provision::{LiquidityProvisionConfig, LiquidityProvisionStrategy};
 pub use llm_prediction::{LlmPredictionConfig, LlmPredictionStrategy};
@@ -33,6 +42,10 @@ pub use multi_leg::{
     CorrelationLeg, CorrelationRelationship, CorrelationRule, MultiLegConfig, MultiLegStrategy,
 };
 pub use new_market::{NewMarketConfig, NewMarketStrategy};
+pub use online_learning::{
+    AdaptiveModelStats, AdaptiveParams, OnlineLearner, OnlineLearningConfig, PersistenceConfig,
+    PredictionRecord, ThompsonSamplingConfig, ThresholdConfig, TradeOutcome,
+};
 pub use orderbook_imbalance::{OrderbookImbalanceConfig, OrderbookImbalanceStrategy};
 pub use price_spike::{PriceSpikeConfig, PriceSpikeStrategy};
 pub use resolution_exit::ResolutionExitStrategy;
@@ -53,3 +66,4 @@ pub use news_velocity::{
     AccelerationConfig, DecelerationConfig, NewsVelocityStrategy, NewsVelocityStrategyConfig,
     VelocityMarketMapping,
 };
+pub use thompson_sampling::{ArmState, MultiArmedBandit, ThompsonSampler};
