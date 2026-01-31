@@ -80,6 +80,11 @@ pub enum SystemEvent {
 
     /// Comment activity spike detected
     CommentActivitySpike(CommentActivityEvent),
+    /// External price update from prediction markets
+    ExternalPriceUpdate(ExternalPriceUpdateEvent),
+
+    /// Prediction arbitrage opportunity detected
+    PredictionArbitrageDetected(PredictionArbitrageEvent),
 }
 
 impl SystemEvent {
@@ -112,6 +117,8 @@ impl SystemEvent {
             SystemEvent::SmartMoneySignal(_) => "smart_money_signal",
             SystemEvent::VolumeAnomalyDetected(_) => "volume_anomaly_detected",
             SystemEvent::CommentActivitySpike(_) => "comment_activity_spike",
+            SystemEvent::ExternalPriceUpdate(_) => "external_price_update",
+            SystemEvent::PredictionArbitrageDetected(_) => "prediction_arbitrage_detected",
         }
     }
 
@@ -144,6 +151,8 @@ impl SystemEvent {
             SystemEvent::SmartMoneySignal(e) => e.timestamp,
             SystemEvent::VolumeAnomalyDetected(e) => e.timestamp,
             SystemEvent::CommentActivitySpike(e) => e.timestamp,
+            SystemEvent::ExternalPriceUpdate(e) => e.timestamp,
+            SystemEvent::PredictionArbitrageDetected(e) => e.timestamp,
         }
     }
 
@@ -176,6 +185,8 @@ impl SystemEvent {
             SystemEvent::SmartMoneySignal(e) => Some(&e.market_id),
             SystemEvent::VolumeAnomalyDetected(e) => Some(&e.market_id),
             SystemEvent::CommentActivitySpike(e) => Some(&e.market_id),
+            SystemEvent::ExternalPriceUpdate(e) => e.polymarket_mapping.as_ref(),
+            SystemEvent::PredictionArbitrageDetected(e) => Some(&e.polymarket_id),
         }
     }
 }
@@ -1131,11 +1142,30 @@ impl VelocityDirection {
             VelocityDirection::Accelerating => "accelerating",
             VelocityDirection::Decelerating => "decelerating",
             VelocityDirection::Stable => "stable",
+/// External prediction market platforms
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ExternalPlatform {
+    /// Metaculus - Expert forecaster community
+    Metaculus,
+    /// PredictIt - US-based prediction market
+    PredictIt,
+    /// Kalshi - Regulated US prediction market
+    Kalshi,
+}
+
+impl ExternalPlatform {
+    /// Get the platform name as a string
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ExternalPlatform::Metaculus => "Metaculus",
+            ExternalPlatform::PredictIt => "PredictIt",
+            ExternalPlatform::Kalshi => "Kalshi",
         }
     }
 }
 
 impl std::fmt::Display for VelocityDirection {
+impl std::fmt::Display for ExternalPlatform {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.as_str())
     }
@@ -1219,6 +1249,29 @@ impl MicrostructureSignalEvent {
             confidence,
             components,
             recommended_action,
+/// External price update event from prediction markets
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternalPriceUpdateEvent {
+    /// The platform this price is from
+    pub platform: ExternalPlatform,
+    /// Platform-specific question/market identifier
+    pub question_id: String,
+    /// YES price (probability 0.0-1.0)
+    pub yes_price: Decimal,
+    /// Polymarket mapping ID (if mapped)
+    pub polymarket_mapping: Option<String>,
+    /// When the price was updated
+    pub timestamp: DateTime<Utc>,
+}
+
+impl ExternalPriceUpdateEvent {
+    /// Create a new external price update event
+    pub fn new(platform: ExternalPlatform, question_id: String, yes_price: Decimal) -> Self {
+        Self {
+            platform,
+            question_id,
+            yes_price,
+            polymarket_mapping: None,
             timestamp: Utc::now(),
         }
     }
@@ -1353,4 +1406,97 @@ pub struct CommentActivityEvent {
     pub sentiment_hint: Option<String>,
     /// When the spike was detected
     pub timestamp: DateTime<Utc>,
+    /// Set the Polymarket mapping
+    pub fn with_polymarket_mapping(mut self, mapping: String) -> Self {
+        self.polymarket_mapping = Some(mapping);
+        self
+    }
+}
+
+/// Type of arbitrage opportunity
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ArbitrageType {
+    /// True risk-free arbitrage (rare, requires positions on both platforms)
+    HardArbitrage,
+    /// Soft arbitrage - edge suggesting mispricing
+    SoftArbitrage,
+    /// Convergence opportunity - expect prices to converge
+    Convergence,
+}
+
+/// Prediction arbitrage detected event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PredictionArbitrageEvent {
+    /// Polymarket condition ID
+    pub polymarket_id: String,
+    /// Polymarket price
+    pub polymarket_price: Decimal,
+    /// External platform with the price discrepancy
+    pub external_platform: ExternalPlatform,
+    /// External price
+    pub external_price: Decimal,
+    /// Price difference (absolute)
+    pub price_difference: Decimal,
+    /// Edge percentage
+    pub edge_pct: Decimal,
+    /// Type of arbitrage opportunity
+    pub arbitrage_type: ArbitrageType,
+    /// Recommended side (Buy/Sell on Polymarket)
+    pub recommended_side: TradeSide,
+    /// Confidence score (0.0-1.0)
+    pub confidence: Decimal,
+    /// When the arbitrage was detected
+    pub timestamp: DateTime<Utc>,
+}
+
+impl PredictionArbitrageEvent {
+    /// Create a new prediction arbitrage event
+    pub fn new(
+        polymarket_id: String,
+        polymarket_price: Decimal,
+        external_platform: ExternalPlatform,
+        external_price: Decimal,
+        recommended_side: TradeSide,
+    ) -> Self {
+        let price_difference = (polymarket_price - external_price).abs();
+        let edge_pct = if !external_price.is_zero() {
+            (price_difference / external_price) * Decimal::ONE_HUNDRED
+        } else {
+            Decimal::ZERO
+        };
+
+        Self {
+            polymarket_id,
+            polymarket_price,
+            external_platform,
+            external_price,
+            price_difference,
+            edge_pct,
+            arbitrage_type: ArbitrageType::SoftArbitrage,
+            recommended_side,
+            confidence: Decimal::new(5, 1), // Default 0.5
+            timestamp: Utc::now(),
+        }
+    }
+
+    /// Set the arbitrage type
+    pub fn with_arbitrage_type(mut self, arbitrage_type: ArbitrageType) -> Self {
+        self.arbitrage_type = arbitrage_type;
+        self
+    }
+
+    /// Set the confidence score
+    pub fn with_confidence(mut self, confidence: Decimal) -> Self {
+        self.confidence = confidence;
+        self
+    }
+}
+
+/// Trade side for arbitrage recommendations
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TradeSide {
+    /// Buy on Polymarket (price is lower than external)
+    Buy,
+    /// Sell on Polymarket (price is higher than external)
+    Sell,
 }

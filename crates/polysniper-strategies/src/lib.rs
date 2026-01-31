@@ -17,6 +17,7 @@ pub mod news_velocity;
 pub mod online_learning;
 pub mod orderbook_imbalance;
 pub mod polymarket_activity;
+pub mod prediction_arbitrage;
 pub mod price_spike;
 pub mod resolution_exit;
 pub mod sentiment_analyzer;
@@ -48,6 +49,10 @@ pub use online_learning::{
     PredictionRecord, ThompsonSamplingConfig, ThresholdConfig, TradeOutcome,
 };
 pub use orderbook_imbalance::{OrderbookImbalanceConfig, OrderbookImbalanceStrategy};
+pub use prediction_arbitrage::{
+    ConvergenceConfig, PlatformWeights, PredictionArbitrageConfig, PredictionArbitrageStrategy,
+    SoftArbConfig,
+};
 pub use price_spike::{PriceSpikeConfig, PriceSpikeStrategy};
 pub use polymarket_activity::{
     CommentActivityConfig, PolymarketActivityStrategy, PolymarketActivityStrategyConfig,

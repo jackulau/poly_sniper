@@ -1,0 +1,73 @@
+# Prediction Aggregator Arbitrage Strategy Configuration
+#
+# This strategy compares Polymarket odds with external prediction markets
+# (Metaculus, PredictIt, Kalshi) to detect pricing discrepancies and edge.
+
+[prediction_arbitrage]
+enabled = false  # Set to true to enable
+min_edge_pct = 5.0  # Minimum edge percentage to trigger
+cooldown_secs = 1800  # 30 minutes cooldown after generating a signal
+
+# Platform weights for consensus calculation
+# Higher weight = more trust in that platform's price
+[prediction_arbitrage.platform_weights]
+metaculus = 1.2   # Expert forecasters, higher trust
+predictit = 0.9   # Retail traders, capped contracts
+kalshi = 1.0      # Regulated, good liquidity
+
+# Soft arbitrage configuration
+# Triggered when edge exceeds threshold
+[prediction_arbitrage.soft_arb]
+enabled = true
+min_edge_pct = 5.0       # Minimum edge to trigger soft arb
+max_entry_price = 0.90   # Don't buy above this price
+order_size_usd = 50.0    # Order size per signal
+
+# Convergence trading configuration
+# Triggered when spread deviates significantly from historical mean
+[prediction_arbitrage.convergence]
+enabled = true
+min_spread_zscore = 2.0  # Spread must be N standard deviations from mean
+lookback_periods = 50    # Number of historical periods to compare
+order_size_usd = 25.0    # Order size per signal
+
+# Market mappings - map Polymarket markets to external markets
+# Add your own mappings here
+
+# Example mapping (commented out - replace with real IDs)
+# [[prediction_arbitrage.mappings]]
+# name = "2024 Presidential Election"
+# polymarket_id = "0x123..."
+# metaculus_id = "12345"
+# predictit_contract = 6867
+# kalshi_ticker = "PRES-24"
+# price_adjustment = 0.02  # Account for fees
+
+# [[prediction_arbitrage.mappings]]
+# name = "Fed Rate Decision"
+# polymarket_id = "0x456..."
+# metaculus_id = "23456"
+# kalshi_ticker = "FED-25JAN"
+# price_adjustment = 0.01
+
+# External market API configuration
+[external_markets.metaculus]
+enabled = true
+api_base_url = "https://www.metaculus.com/api2"
+poll_interval_secs = 300  # 5 minutes
+tracked_questions = []  # Add question IDs to track
+
+[external_markets.predictit]
+enabled = true
+api_base_url = "https://www.predictit.org/api"
+poll_interval_secs = 60  # 1 minute
+tracked_markets = []  # Add market IDs to track
+
+[external_markets.kalshi]
+enabled = true
+api_base_url = "https://trading-api.kalshi.com/trade-api/v2"
+poll_interval_secs = 30  # 30 seconds
+email_env = "KALSHI_EMAIL"  # Environment variable for email
+password_env = "KALSHI_PASSWORD"  # Environment variable for password
+tracked_series = []  # Add series tickers to track
+tracked_markets = []  # Add market tickers to track

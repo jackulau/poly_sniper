@@ -7,6 +7,7 @@ pub mod crypto_price_client;
 pub mod connection_pool;
 pub mod event_bus;
 pub mod event_bus_fast;
+pub mod external_markets;
 pub mod feed_aggregator;
 pub mod feed_types;
 pub mod gamma_client;
@@ -16,6 +17,7 @@ pub mod news_velocity;
 pub mod openrouter_client;
 pub mod providers;
 pub mod polymarket_activity;
+pub mod prediction_aggregator;
 pub mod resolution_monitor;
 pub mod rss_client;
 pub mod twitter_client;
@@ -32,6 +34,10 @@ pub use event_bus::BroadcastEventBus;
 pub use event_bus_fast::{
     AsyncEventSubscription, BackpressureConfig, EventBusMetrics, EventSubscription,
     EventSubscriptionExt, LockFreeEventBus, UnifiedEventBus,
+pub use external_markets::{
+    ExternalMarketError, ExternalMarketPrice, KalshiClient, KalshiConfig, KalshiEvent,
+    KalshiMarket, MetaculusClient, MetaculusConfig, MetaculusPrediction, Platform,
+    PredictItClient, PredictItConfig, PredictItContract, PredictItMarket,
 };
 pub use feed_aggregator::FeedAggregator;
 pub use feed_types::{FeedConfig, FeedError, FeedItem, FeedSource, RssConfig, RssFeedConfig, TwitterConfig, TwitterQueryConfig};
@@ -46,6 +52,9 @@ pub use providers::{BoxedProvider, LlmProvider, OpenRouterProvider, ProviderErro
 pub use polymarket_activity::{
     PolymarketActivityClient, PolymarketActivityConfig, TraderPosition, TraderProfile,
     VolumeSnapshot,
+pub use prediction_aggregator::{
+    AggregatedPrice, ArbitrageOpportunity, ArbitrageType, MarketMapping, PlatformWeights,
+    PredictionAggregator, PredictionAggregatorConfig, Side,
 };
 pub use resolution_monitor::ResolutionMonitor;
 pub use rss_client::RssClient;
