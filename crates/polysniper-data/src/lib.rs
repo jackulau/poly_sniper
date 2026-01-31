@@ -15,6 +15,7 @@ pub mod market_cache;
 pub mod news_velocity;
 pub mod openrouter_client;
 pub mod providers;
+pub mod polymarket_activity;
 pub mod resolution_monitor;
 pub mod rss_client;
 pub mod twitter_client;
@@ -42,6 +43,10 @@ pub use openrouter_client::{
     OpenRouterConfig, ResponseFormat, ResponseMessage, Usage,
 };
 pub use providers::{BoxedProvider, LlmProvider, OpenRouterProvider, ProviderError, ProviderFactory};
+pub use polymarket_activity::{
+    PolymarketActivityClient, PolymarketActivityConfig, TraderPosition, TraderProfile,
+    VolumeSnapshot,
+};
 pub use resolution_monitor::ResolutionMonitor;
 pub use rss_client::RssClient;
 pub use twitter_client::TwitterClient;

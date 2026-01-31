@@ -16,6 +16,7 @@ pub mod new_market;
 pub mod news_velocity;
 pub mod online_learning;
 pub mod orderbook_imbalance;
+pub mod polymarket_activity;
 pub mod price_spike;
 pub mod resolution_exit;
 pub mod sentiment_analyzer;
@@ -48,6 +49,10 @@ pub use online_learning::{
 };
 pub use orderbook_imbalance::{OrderbookImbalanceConfig, OrderbookImbalanceStrategy};
 pub use price_spike::{PriceSpikeConfig, PriceSpikeStrategy};
+pub use polymarket_activity::{
+    CommentActivityConfig, PolymarketActivityStrategy, PolymarketActivityStrategyConfig,
+    SmartMoneyConfig, VolumeAnomalyConfig,
+};
 pub use resolution_exit::ResolutionExitStrategy;
 pub use sentiment_analyzer::SentimentAnalyzer;
 pub use sentiment_strategy::{SentimentMarketMapping, SentimentStrategy, SentimentStrategyConfig};
