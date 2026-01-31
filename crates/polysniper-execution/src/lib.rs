@@ -8,6 +8,7 @@ pub mod fill_manager;
 pub mod fill_poller;
 pub mod gas_optimizer;
 pub mod gas_tracker;
+pub mod market_impact;
 pub mod order_builder;
 pub mod order_manager;
 pub mod queue_estimator;
@@ -22,6 +23,10 @@ pub use fill_manager::FillManager;
 pub use fill_poller::FillPoller;
 pub use gas_optimizer::GasOptimizer;
 pub use gas_tracker::GasTracker;
+pub use market_impact::{
+    ImpactModelType, ImpactObservation, ImpactParameters, ImpactPrediction, ImpactRecommendation,
+    MarketConditions, MarketImpactConfig, MarketImpactEstimator,
+};
 pub use order_builder::OrderBuilder;
 pub use order_manager::OrderManager;
 pub use queue_estimator::QueueEstimator;
