@@ -1,4 +1,4 @@
-use crate::types::{Market, MarketId, Orderbook, Position, QueuePosition, TokenId, TradeSignal};
+use crate::types::{CorrelationRegime, Market, MarketId, Orderbook, Position, QueuePosition, TokenId, TradeSignal};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -60,6 +60,9 @@ pub enum SystemEvent {
 
     /// Order replaced
     OrderReplaced(OrderReplacedEvent),
+
+    /// Correlation regime changed
+    CorrelationRegimeChange(CorrelationRegimeChangeEvent),
 }
 
 impl SystemEvent {
@@ -84,6 +87,7 @@ impl SystemEvent {
             SystemEvent::ResubmitTriggered(_) => "resubmit_triggered",
             SystemEvent::GasPriceUpdate(_) => "gas_price_update",
             SystemEvent::OrderReplaced(_) => "order_replaced",
+            SystemEvent::CorrelationRegimeChange(_) => "correlation_regime_change",
         }
     }
 
@@ -108,6 +112,7 @@ impl SystemEvent {
             SystemEvent::ResubmitTriggered(e) => e.timestamp,
             SystemEvent::GasPriceUpdate(e) => e.timestamp,
             SystemEvent::OrderReplaced(e) => e.timestamp,
+            SystemEvent::CorrelationRegimeChange(e) => e.timestamp,
         }
     }
 
@@ -132,6 +137,7 @@ impl SystemEvent {
             SystemEvent::ResubmitTriggered(e) => Some(&e.market_id),
             SystemEvent::GasPriceUpdate(_) => None,
             SystemEvent::OrderReplaced(e) => Some(&e.market_id),
+            SystemEvent::CorrelationRegimeChange(_) => None,
         }
     }
 }
@@ -527,4 +533,45 @@ pub struct OrderReplacedEvent {
     pub reason: String,
     /// When the replacement occurred
     pub timestamp: DateTime<Utc>,
+}
+
+/// Correlation regime change event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrelationRegimeChangeEvent {
+    /// Previous regime
+    pub old_regime: CorrelationRegime,
+    /// New regime
+    pub new_regime: CorrelationRegime,
+    /// Current average correlation across position pairs
+    pub avg_correlation: Decimal,
+    /// Short-term average correlation
+    pub short_term_avg: Option<Decimal>,
+    /// Long-term average correlation
+    pub long_term_avg: Option<Decimal>,
+    /// New exposure limit multiplier
+    pub limit_multiplier: Decimal,
+    /// When the change occurred
+    pub timestamp: DateTime<Utc>,
+}
+
+impl CorrelationRegimeChangeEvent {
+    /// Create a new correlation regime change event
+    pub fn new(
+        old_regime: CorrelationRegime,
+        new_regime: CorrelationRegime,
+        avg_correlation: Decimal,
+        short_term_avg: Option<Decimal>,
+        long_term_avg: Option<Decimal>,
+        limit_multiplier: Decimal,
+    ) -> Self {
+        Self {
+            old_regime,
+            new_regime,
+            avg_correlation,
+            short_term_avg,
+            long_term_avg,
+            limit_multiplier,
+            timestamp: Utc::now(),
+        }
+    }
 }

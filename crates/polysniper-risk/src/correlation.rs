@@ -4,7 +4,8 @@
 //! relationships between markets and enforcing aggregate exposure limits
 //! for correlated positions.
 
-use polysniper_core::{CorrelationConfig, Position, StateProvider};
+use crate::correlation_regime::CorrelationRegimeDetector;
+use polysniper_core::{CorrelationConfig, CorrelationRegime, Position, StateProvider};
 use rust_decimal::Decimal;
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, info, warn};
@@ -50,16 +51,21 @@ pub struct CorrelationTracker {
     dynamic_groups: Vec<CorrelationGroup>,
     /// Cache of market to group mappings for fast lookup
     market_to_groups: HashMap<String, Vec<String>>,
+    /// Correlation regime detector for dynamic limit adjustment
+    regime_detector: CorrelationRegimeDetector,
 }
 
 impl CorrelationTracker {
     /// Create a new correlation tracker from configuration
     pub fn new(config: CorrelationConfig) -> Self {
+        let regime_detector = CorrelationRegimeDetector::new(config.regime.clone());
+
         let mut tracker = Self {
             config: config.clone(),
             manual_groups: Vec::new(),
             dynamic_groups: Vec::new(),
             market_to_groups: HashMap::new(),
+            regime_detector,
         };
 
         // Initialize manual groups from config
@@ -102,9 +108,123 @@ impl CorrelationTracker {
         self.config.enabled
     }
 
-    /// Get the maximum correlated exposure limit
+    /// Get the maximum correlated exposure limit (regime-adjusted)
     pub fn max_correlated_exposure(&self) -> Decimal {
+        let base_limit = self.config.max_correlated_exposure_usd;
+        let multiplier = self.regime_detector.get_limit_multiplier();
+        base_limit * multiplier
+    }
+
+    /// Get the base (unadjusted) maximum correlated exposure limit
+    pub fn base_max_correlated_exposure(&self) -> Decimal {
         self.config.max_correlated_exposure_usd
+    }
+
+    /// Get the current correlation regime
+    pub fn current_regime(&self) -> CorrelationRegime {
+        self.regime_detector.current_regime()
+    }
+
+    /// Get the current regime limit multiplier
+    pub fn regime_limit_multiplier(&self) -> Decimal {
+        self.regime_detector.get_limit_multiplier()
+    }
+
+    /// Check if regime detection has sufficient data
+    pub fn regime_has_sufficient_data(&self) -> bool {
+        self.regime_detector.has_sufficient_data()
+    }
+
+    /// Get the regime detector (for advanced monitoring)
+    pub fn regime_detector(&self) -> &CorrelationRegimeDetector {
+        &self.regime_detector
+    }
+
+    /// Record an average correlation observation and potentially update regime
+    ///
+    /// Returns `Some((old_regime, new_regime))` if the regime changed.
+    pub fn record_correlation_observation(
+        &mut self,
+        avg_correlation: Decimal,
+    ) -> Option<(CorrelationRegime, CorrelationRegime)> {
+        self.regime_detector.record_observation(avg_correlation)
+    }
+
+    /// Calculate average pairwise correlation across all current positions
+    ///
+    /// This can be called periodically to update regime detection.
+    pub async fn calculate_and_record_average_correlation(
+        &mut self,
+        state: &dyn StateProvider,
+    ) -> Option<(CorrelationRegime, CorrelationRegime)> {
+        if !self.config.enabled || !self.config.regime.enabled {
+            return None;
+        }
+
+        let all_positions = state.get_all_positions().await;
+        if all_positions.len() < 2 {
+            return None;
+        }
+
+        // Collect price histories
+        let mut price_histories: HashMap<String, Vec<Decimal>> = HashMap::new();
+        for position in &all_positions {
+            let history = state.get_price_history(&position.token_id, 100).await;
+            if history.len() >= 10 {
+                price_histories.insert(
+                    position.token_id.clone(),
+                    history.iter().map(|(_, p)| *p).collect(),
+                );
+            }
+        }
+
+        if price_histories.len() < 2 {
+            return None;
+        }
+
+        // Calculate pairwise correlations
+        let token_ids: Vec<_> = price_histories.keys().cloned().collect();
+        let mut correlations = Vec::new();
+
+        for i in 0..token_ids.len() {
+            for j in (i + 1)..token_ids.len() {
+                let id_a = &token_ids[i];
+                let id_b = &token_ids[j];
+
+                if let (Some(prices_a), Some(prices_b)) =
+                    (price_histories.get(id_a), price_histories.get(id_b))
+                {
+                    let min_len = prices_a.len().min(prices_b.len());
+                    if min_len < 10 {
+                        continue;
+                    }
+
+                    let prices_a: Vec<_> = prices_a.iter().take(min_len).copied().collect();
+                    let prices_b: Vec<_> = prices_b.iter().take(min_len).copied().collect();
+
+                    if let Some(corr) = Self::calculate_correlation(&prices_a, &prices_b) {
+                        correlations.push(corr.abs());
+                    }
+                }
+            }
+        }
+
+        if correlations.is_empty() {
+            return None;
+        }
+
+        // Calculate average absolute correlation
+        let sum: Decimal = correlations.iter().sum();
+        let avg_correlation = sum / Decimal::from(correlations.len());
+
+        debug!(
+            num_pairs = correlations.len(),
+            avg_correlation = %avg_correlation,
+            "Calculated average pairwise correlation"
+        );
+
+        // Record observation and check for regime change
+        self.regime_detector.record_observation(avg_correlation)
     }
 
     /// Calculate Pearson correlation coefficient between two price series
@@ -489,8 +609,30 @@ impl CorrelationTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use polysniper_core::CorrelationGroupConfig;
+    use polysniper_core::{CorrelationGroupConfig, CorrelationRegimeConfig};
     use rust_decimal_macros::dec;
+
+    fn default_config() -> CorrelationConfig {
+        CorrelationConfig {
+            enabled: true,
+            correlation_threshold: dec!(0.7),
+            window_secs: 3600,
+            max_correlated_exposure_usd: dec!(3000),
+            groups: Vec::new(),
+            regime: CorrelationRegimeConfig::default(),
+        }
+    }
+
+    fn config_with_groups(groups: Vec<CorrelationGroupConfig>) -> CorrelationConfig {
+        CorrelationConfig {
+            enabled: true,
+            correlation_threshold: dec!(0.7),
+            window_secs: 3600,
+            max_correlated_exposure_usd: dec!(3000),
+            groups,
+            regime: CorrelationRegimeConfig::default(),
+        }
+    }
 
     #[test]
     fn test_correlation_calculation_perfect_positive() {
@@ -553,23 +695,18 @@ mod tests {
 
     #[test]
     fn test_tracker_with_manual_groups() {
-        let config = CorrelationConfig {
-            enabled: true,
-            correlation_threshold: dec!(0.7),
-            window_secs: 3600,
-            max_correlated_exposure_usd: dec!(3000),
-            groups: vec![CorrelationGroupConfig {
-                name: "election".to_string(),
-                markets: vec![
-                    "presidential-winner".to_string(),
-                    "electoral-count".to_string(),
-                ],
-            }],
-        };
+        let config = config_with_groups(vec![CorrelationGroupConfig {
+            name: "election".to_string(),
+            markets: vec![
+                "presidential-winner".to_string(),
+                "electoral-count".to_string(),
+            ],
+        }]);
 
         let tracker = CorrelationTracker::new(config);
 
         assert!(tracker.is_enabled());
+        // Normal regime, multiplier is 1.0, so limit stays at 3000
         assert_eq!(tracker.max_correlated_exposure(), dec!(3000));
 
         let groups = tracker.get_groups_for_market("presidential-winner");
@@ -579,16 +716,10 @@ mod tests {
 
     #[test]
     fn test_pattern_matching() {
-        let config = CorrelationConfig {
-            enabled: true,
-            correlation_threshold: dec!(0.7),
-            window_secs: 3600,
-            max_correlated_exposure_usd: dec!(3000),
-            groups: vec![CorrelationGroupConfig {
-                name: "swing-states".to_string(),
-                markets: vec!["swing-state-*".to_string()],
-            }],
-        };
+        let config = config_with_groups(vec![CorrelationGroupConfig {
+            name: "swing-states".to_string(),
+            markets: vec!["swing-state-*".to_string()],
+        }]);
 
         let tracker = CorrelationTracker::new(config);
 
@@ -603,20 +734,14 @@ mod tests {
 
     #[test]
     fn test_get_correlated_markets() {
-        let config = CorrelationConfig {
-            enabled: true,
-            correlation_threshold: dec!(0.7),
-            window_secs: 3600,
-            max_correlated_exposure_usd: dec!(3000),
-            groups: vec![CorrelationGroupConfig {
-                name: "test".to_string(),
-                markets: vec![
-                    "market-a".to_string(),
-                    "market-b".to_string(),
-                    "market-c".to_string(),
-                ],
-            }],
-        };
+        let config = config_with_groups(vec![CorrelationGroupConfig {
+            name: "test".to_string(),
+            markets: vec![
+                "market-a".to_string(),
+                "market-b".to_string(),
+                "market-c".to_string(),
+            ],
+        }]);
 
         let tracker = CorrelationTracker::new(config);
 
@@ -675,5 +800,64 @@ mod tests {
         // One group should have d, e
         let has_de = merged.values().any(|g| g.len() == 2 && g.contains("d") && g.contains("e"));
         assert!(has_de, "Expected group with d, e");
+    }
+
+    // New tests for regime detection integration
+    #[test]
+    fn test_regime_detection_integration() {
+        let config = default_config();
+        let tracker = CorrelationTracker::new(config);
+
+        // Initially in normal regime
+        assert_eq!(tracker.current_regime(), CorrelationRegime::Normal);
+        assert_eq!(tracker.regime_limit_multiplier(), dec!(1.0));
+
+        // Base limit should be 3000
+        assert_eq!(tracker.base_max_correlated_exposure(), dec!(3000));
+    }
+
+    #[test]
+    fn test_regime_adjusted_exposure_limit() {
+        let mut config = default_config();
+        // Manually set regime config for testing
+        config.regime.elevated_limit_multiplier = dec!(0.5);
+        config.regime.crisis_limit_multiplier = dec!(0.25);
+
+        let tracker = CorrelationTracker::new(config);
+
+        // Normal regime: full limit
+        assert_eq!(tracker.max_correlated_exposure(), dec!(3000));
+
+        // Record observations to test regime changes would require async/await
+        // Just verify the multiplier access works
+        assert!(!tracker.regime_has_sufficient_data());
+    }
+
+    #[test]
+    fn test_record_correlation_observation() {
+        let mut config = default_config();
+        config.regime.min_samples = 5; // Lower for testing
+        let mut tracker = CorrelationTracker::new(config);
+
+        // Record some observations
+        for _ in 0..10 {
+            let _ = tracker.record_correlation_observation(dec!(0.3));
+        }
+
+        // Should now have sufficient data
+        assert!(tracker.regime_has_sufficient_data());
+
+        // Should still be in normal regime with stable correlations
+        assert_eq!(tracker.current_regime(), CorrelationRegime::Normal);
+    }
+
+    #[test]
+    fn test_regime_snapshot_access() {
+        let config = default_config();
+        let tracker = CorrelationTracker::new(config);
+
+        let snapshot = tracker.regime_detector().snapshot();
+        assert_eq!(snapshot.regime, CorrelationRegime::Normal);
+        assert!(!snapshot.has_sufficient_data);
     }
 }

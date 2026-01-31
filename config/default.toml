@@ -30,6 +30,40 @@ circuit_breaker_loss_usd = 300
 # Maximum orders per minute
 max_orders_per_minute = 60
 
+# Correlation-aware position limits
+[risk.correlation]
+# Whether correlation-aware limits are enabled
+enabled = true
+# Minimum correlation threshold to group markets dynamically
+correlation_threshold = 0.7
+# Time window in seconds for correlation calculation
+window_secs = 3600
+# Maximum total exposure across correlated markets in USD (base limit, adjusted by regime)
+max_correlated_exposure_usd = 3000
+
+# Correlation regime detection for dynamic limit adjustment
+[risk.correlation.regime]
+# Whether regime detection is enabled
+enabled = true
+# Short-term rolling window in seconds (5 minutes)
+short_window_secs = 300
+# Long-term rolling window in seconds (24 hours)
+long_window_secs = 86400
+# Threshold for elevated regime (50% above baseline triggers elevated)
+elevated_threshold = 0.5
+# Threshold for crisis regime (100% above baseline triggers crisis)
+crisis_threshold = 1.0
+# Exposure limit multiplier during normal regime
+normal_limit_multiplier = 1.0
+# Exposure limit multiplier during elevated regime (70% of base limit)
+elevated_limit_multiplier = 0.7
+# Exposure limit multiplier during crisis regime (40% of base limit)
+crisis_limit_multiplier = 0.4
+# Minimum samples required before regime detection activates
+min_samples = 100
+# Hysteresis factor to prevent regime flickering (10%)
+hysteresis_factor = 0.1
+
 # Volatility-adjusted position sizing
 [risk.volatility]
 # Whether volatility-based sizing is enabled
