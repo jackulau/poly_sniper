@@ -6,6 +6,7 @@ pub mod connection_health;
 pub mod crypto_price_client;
 pub mod connection_pool;
 pub mod event_bus;
+pub mod event_bus_fast;
 pub mod feed_aggregator;
 pub mod feed_types;
 pub mod gamma_client;
@@ -26,6 +27,10 @@ pub use connection_pool::{
     RpcConnection,
 };
 pub use event_bus::BroadcastEventBus;
+pub use event_bus_fast::{
+    AsyncEventSubscription, BackpressureConfig, EventBusMetrics, EventSubscription,
+    EventSubscriptionExt, LockFreeEventBus, UnifiedEventBus,
+};
 pub use feed_aggregator::FeedAggregator;
 pub use feed_types::{FeedConfig, FeedError, FeedItem, FeedSource, RssConfig, RssFeedConfig, TwitterConfig, TwitterQueryConfig};
 pub use gamma_client::GammaClient;

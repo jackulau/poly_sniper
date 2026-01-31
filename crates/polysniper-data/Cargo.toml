@@ -33,3 +33,13 @@ rand.workspace = true
 parking_lot = "0.12"
 [dev-dependencies]
 rust_decimal_macros.workspace = true
+# Lock-free event bus
+crossbeam-channel.workspace = true
+parking_lot.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "event_bus_bench"
+harness = false
