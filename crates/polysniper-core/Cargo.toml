@@ -28,3 +28,4 @@ tempfile = "3"
 [[bench]]
 name = "orderbook_bench"
 harness = false
+tempfile = "3.24"

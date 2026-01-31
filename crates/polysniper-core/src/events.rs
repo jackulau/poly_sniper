@@ -68,6 +68,8 @@ pub enum SystemEvent {
     CryptoPriceUpdate(CryptoPriceUpdateEvent),
     /// Microstructure analysis events (VPIN, whale detection, market impact)
     Microstructure(MicrostructureEvent),
+    /// News velocity signal (acceleration/deceleration in coverage)
+    NewsVelocitySignal(NewsVelocitySignalEvent),
 }
 
 impl SystemEvent {
@@ -95,6 +97,7 @@ impl SystemEvent {
             SystemEvent::CorrelationRegimeChange(_) => "correlation_regime_change",
             SystemEvent::CryptoPriceUpdate(_) => "crypto_price_update",
             SystemEvent::Microstructure(e) => e.event_type(),
+            SystemEvent::NewsVelocitySignal(_) => "news_velocity_signal",
         }
     }
 
@@ -122,6 +125,7 @@ impl SystemEvent {
             SystemEvent::CorrelationRegimeChange(e) => e.timestamp,
             SystemEvent::CryptoPriceUpdate(e) => e.timestamp,
             SystemEvent::Microstructure(e) => e.timestamp(),
+            SystemEvent::NewsVelocitySignal(e) => e.timestamp,
         }
     }
 
@@ -149,6 +153,7 @@ impl SystemEvent {
             SystemEvent::CorrelationRegimeChange(_) => None,
             SystemEvent::CryptoPriceUpdate(_) => None,
             SystemEvent::Microstructure(e) => e.market_id(),
+            SystemEvent::NewsVelocitySignal(e) => e.market_ids.first(),
         }
     }
 }
@@ -1070,6 +1075,54 @@ pub struct MicrostructureSignalEvent {
     pub components: MicrostructureComponents,
     /// Recommended action
     pub recommended_action: MicrostructureAction,
+/// Direction of news velocity change
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VelocityDirection {
+    /// Coverage increasing rapidly (breaking news)
+    Accelerating,
+    /// Coverage decreasing (story fading)
+    Decelerating,
+    /// Normal/stable coverage
+    Stable,
+}
+
+impl VelocityDirection {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VelocityDirection::Accelerating => "accelerating",
+            VelocityDirection::Decelerating => "decelerating",
+            VelocityDirection::Stable => "stable",
+        }
+    }
+}
+
+impl std::fmt::Display for VelocityDirection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// News velocity signal event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewsVelocitySignalEvent {
+    /// Keyword that triggered this signal
+    pub keyword: String,
+    /// Market IDs mapped to this keyword
+    pub market_ids: Vec<MarketId>,
+    /// Direction of velocity change
+    pub direction: VelocityDirection,
+    /// Current velocity (articles per hour)
+    pub current_velocity: Decimal,
+    /// Historical baseline velocity
+    pub baseline_velocity: Decimal,
+    /// Acceleration factor (current / baseline)
+    pub acceleration: Decimal,
+    /// Number of articles in the last hour
+    pub article_count_1h: u32,
+    /// Number of articles in the last 24 hours
+    pub article_count_24h: u32,
+    /// Sample headlines for context
+    pub sample_headlines: Vec<String>,
     /// When the signal was generated
     pub timestamp: DateTime<Utc>,
 }
@@ -1111,5 +1164,32 @@ impl MicrostructureSignalEvent {
             self.signal_type,
             MicrostructureSignalType::Unfavorable | MicrostructureSignalType::HighToxicity
         )
+    }
+impl NewsVelocitySignalEvent {
+    /// Create a new news velocity signal event
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        keyword: String,
+        market_ids: Vec<MarketId>,
+        direction: VelocityDirection,
+        current_velocity: Decimal,
+        baseline_velocity: Decimal,
+        acceleration: Decimal,
+        article_count_1h: u32,
+        article_count_24h: u32,
+        sample_headlines: Vec<String>,
+    ) -> Self {
+        Self {
+            keyword,
+            market_ids,
+            direction,
+            current_velocity,
+            baseline_velocity,
+            acceleration,
+            article_count_1h,
+            article_count_24h,
+            sample_headlines,
+            timestamp: Utc::now(),
+        }
     }
 }

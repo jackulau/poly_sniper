@@ -12,6 +12,7 @@ pub mod feed_types;
 pub mod gamma_client;
 pub mod http_pool;
 pub mod market_cache;
+pub mod news_velocity;
 pub mod openrouter_client;
 pub mod providers;
 pub mod resolution_monitor;
@@ -47,3 +48,8 @@ pub use twitter_client::TwitterClient;
 pub use webhook_server::WebhookServer;
 pub use ws_manager::{ConnectionConfig, WsManager};
 pub use ws_manager::{WsManager, WsManagerConfig};
+pub use ws_manager::WsManager;
+pub use news_velocity::{
+    ArticleTimestamp, KeywordTracking, NewsCategory, NewsVelocityConfig, NewsVelocityTracker,
+    VelocityMetrics, VelocityWindows,
+};

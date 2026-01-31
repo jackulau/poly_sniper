@@ -12,6 +12,7 @@ pub mod microstructure_strategy;
 pub mod ml_processor;
 pub mod multi_leg;
 pub mod new_market;
+pub mod news_velocity;
 pub mod orderbook_imbalance;
 pub mod price_spike;
 pub mod resolution_exit;
@@ -48,4 +49,7 @@ pub use whale_detector::{
 pub use microstructure_strategy::{
     ImpactAdjustmentConfig, MicrostructureStrategy, MicrostructureStrategyConfig, ToxicityAction,
     VpinTradingConfig, WhaleTradingConfig,
+pub use news_velocity::{
+    AccelerationConfig, DecelerationConfig, NewsVelocityStrategy, NewsVelocityStrategyConfig,
+    VelocityMarketMapping,
 };

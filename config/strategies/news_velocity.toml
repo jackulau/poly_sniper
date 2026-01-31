@@ -1,0 +1,135 @@
+# News Velocity Strategy Configuration
+#
+# This strategy monitors the rate-of-change in news coverage for keywords,
+# generating trade signals based on acceleration (breaking news) or
+# deceleration (fading story) patterns.
+#
+# Velocity = articles per hour for a given keyword
+# Acceleration = current velocity / baseline velocity
+
+[strategy]
+enabled = false
+
+# Global cooldown between any signals (seconds)
+global_cooldown_secs = 300
+
+# Priority for generated signals: Low, Normal, High, Critical
+signal_priority = "High"
+
+# Acceleration configuration (breaking news signals)
+[strategy.acceleration]
+enabled = true
+# Minimum acceleration factor to trigger signal (2.0 = 2x baseline)
+min_acceleration = "2.0"
+# Minimum articles in last hour to trigger signal
+min_articles_1h = 5
+# Trade direction for acceleration signals
+signal_direction = "Buy"
+# Default order size in USD
+order_size_usd = "50"
+# Maximum entry price (don't chase too high)
+max_entry_price = "0.85"
+# Cooldown between acceleration signals per keyword (seconds)
+cooldown_secs = 1800
+
+# Deceleration configuration (fading story signals)
+[strategy.deceleration]
+enabled = true
+# Maximum velocity ratio to trigger signal (0.3 = 30% of baseline)
+max_velocity_ratio = "0.3"
+# Trade direction for deceleration signals
+signal_direction = "Sell"
+# Order size in USD (0 = close existing position only)
+order_size_usd = "0"
+# Minimum position profit percentage to exit
+min_position_profit_pct = "5.0"
+# Cooldown between deceleration signals per keyword (seconds)
+cooldown_secs = 3600
+
+# Market mappings - map keywords to specific markets
+# Each keyword tracked in the velocity tracker should have a mapping here
+#
+# Example:
+# [strategy.market_mappings.trump]
+# market_id = "0xabc123..."
+# yes_token_id = "0xdef456..."
+# no_token_id = "0xghi789..."
+# order_size_usd = "100"        # Optional: override default order size
+# max_entry_price = "0.90"      # Optional: override default max price
+# acceleration_enabled = true   # Optional: enable/disable for this market
+# deceleration_enabled = true   # Optional: enable/disable for this market
+
+# [strategy.market_mappings.trump]
+# market_id = "your-trump-market-condition-id"
+# yes_token_id = "your-trump-yes-token-id"
+# no_token_id = "your-trump-no-token-id"
+# order_size_usd = "100"
+# max_entry_price = "0.90"
+
+# [strategy.market_mappings."bitcoin etf"]
+# market_id = "your-btc-etf-market-id"
+# yes_token_id = "your-btc-etf-yes-token-id"
+# no_token_id = "your-btc-etf-no-token-id"
+# order_size_usd = "75"
+
+# [strategy.market_mappings."fed rate"]
+# market_id = "your-fed-rate-market-id"
+# yes_token_id = "your-fed-rate-yes-token-id"
+# no_token_id = "your-fed-rate-no-token-id"
+
+# ==========================================================================
+# News Velocity Tracker Configuration
+# (This configures the data layer velocity tracking)
+# ==========================================================================
+
+[velocity_tracker]
+enabled = false
+
+# Velocity calculation windows (in seconds)
+[velocity_tracker.velocity_windows]
+short_secs = 3600      # 1 hour
+medium_secs = 21600    # 6 hours
+long_secs = 86400      # 24 hours
+
+# Acceleration threshold (e.g., 2.0 = 2x baseline)
+acceleration_threshold = "2.0"
+
+# Deceleration threshold (e.g., 0.5 = half baseline)
+deceleration_threshold = "0.5"
+
+# Minimum articles for signal generation
+min_articles_for_signal = 5
+
+# Maximum articles to keep in history per keyword
+max_history_per_keyword = 1000
+
+# Cooldown between signals for the same keyword (seconds)
+signal_cooldown_secs = 1800
+
+# Maximum sample headlines to include in signals
+max_sample_headlines = 5
+
+# Keywords to track with their aliases
+# Each keyword should also have a market_mapping in the strategy config
+
+[[velocity_tracker.tracking_keywords]]
+keyword = "trump"
+aliases = ["Donald Trump", "POTUS", "Trump administration"]
+category = "Politics"
+
+[[velocity_tracker.tracking_keywords]]
+keyword = "bitcoin etf"
+aliases = ["spot btc etf", "bitcoin spot etf", "BTC ETF"]
+category = "Crypto"
+
+[[velocity_tracker.tracking_keywords]]
+keyword = "fed rate"
+aliases = ["federal reserve", "interest rate", "rate cut", "rate hike", "FOMC"]
+category = "Finance"
+
+# Keyword to market ID mappings for the tracker
+# Maps tracked keywords to Polymarket market IDs
+[velocity_tracker.market_mappings]
+# trump = ["0xabc123..."]
+# "bitcoin etf" = ["0x789ghi..."]
+# "fed rate" = ["0xjkl012..."]
