@@ -21,6 +21,35 @@ pub trait Strategy: Send + Sync {
         state: &dyn StateProvider,
     ) -> Result<Vec<TradeSignal>, StrategyError>;
 
+    /// Process a batch of events for improved throughput
+    ///
+    /// Default implementation falls back to processing events individually.
+    /// Strategies that can benefit from batch processing (e.g., by deduplicating
+    /// updates per token or batching state updates) should override this method
+    /// and set `supports_batch()` to return true.
+    async fn process_batch(
+        &self,
+        events: &[SystemEvent],
+        state: &dyn StateProvider,
+    ) -> Result<Vec<TradeSignal>, StrategyError> {
+        let mut signals = Vec::new();
+        for event in events {
+            if self.accepts_event(event) {
+                signals.extend(self.process_event(event, state).await?);
+            }
+        }
+        Ok(signals)
+    }
+
+    /// Whether this strategy supports optimized batch processing
+    ///
+    /// If true, the event loop will prefer calling `process_batch()` over
+    /// individual `process_event()` calls. Strategies should only return true
+    /// if they have an optimized batch implementation.
+    fn supports_batch(&self) -> bool {
+        false
+    }
+
     /// Check if this strategy is interested in a particular event type
     fn accepts_event(&self, event: &SystemEvent) -> bool;
 

@@ -344,6 +344,148 @@ impl Strategy for OrderbookImbalanceStrategy {
         Ok(signals)
     }
 
+    /// Optimized batch processing for orderbook updates
+    ///
+    /// Instead of processing each orderbook update individually, this groups
+    /// updates by token and only processes the latest update for each token.
+    /// This significantly reduces processing overhead when multiple updates
+    /// arrive for the same token within a batch window.
+    async fn process_batch(
+        &self,
+        events: &[SystemEvent],
+        state: &dyn StateProvider,
+    ) -> Result<Vec<TradeSignal>, StrategyError> {
+        // Group orderbook updates by token, keeping only the latest
+        let mut latest_by_token: HashMap<TokenId, &polysniper_core::OrderbookUpdateEvent> =
+            HashMap::new();
+
+        for event in events {
+            if let SystemEvent::OrderbookUpdate(e) = event {
+                // Only track if we monitor this market
+                if self.should_monitor_market(&e.market_id) {
+                    latest_by_token.insert(e.token_id.clone(), e);
+                }
+            }
+        }
+
+        // Process only the latest update per token
+        let mut signals = Vec::with_capacity(latest_by_token.len());
+
+        for (token_id, update) in latest_by_token {
+            // Check cooldown
+            if self.is_in_cooldown(&token_id).await {
+                debug!(token_id = %token_id, "Token in cooldown, skipping (batch)");
+                continue;
+            }
+
+            // Calculate imbalance
+            let imbalance = match self.calculate_imbalance(&update.orderbook) {
+                Some(result) => result,
+                None => {
+                    debug!(token_id = %token_id, "Could not calculate imbalance (empty orderbook, batch)");
+                    continue;
+                }
+            };
+
+            // Check if imbalance exceeds threshold
+            let inverse_threshold = Decimal::ONE / self.config.imbalance_threshold;
+            let (should_signal, side, direction) =
+                if imbalance.ratio >= self.config.imbalance_threshold {
+                    (true, Side::Buy, "bullish")
+                } else if imbalance.ratio <= inverse_threshold {
+                    (true, Side::Sell, "bearish")
+                } else {
+                    (false, Side::Buy, "neutral")
+                };
+
+            if !should_signal {
+                continue;
+            }
+
+            info!(
+                token_id = %token_id,
+                market_id = %update.market_id,
+                ratio = %imbalance.ratio,
+                direction = %direction,
+                side = ?side,
+                "Orderbook imbalance detected (batch)!"
+            );
+
+            // Get market info for outcome
+            let token_map = self.token_market_map.read().await;
+            let outcome = token_map
+                .get(&token_id)
+                .map(|(_, o)| *o)
+                .unwrap_or(Outcome::Yes);
+            drop(token_map);
+
+            // Check liquidity
+            if let Some(market) = state.get_market(&update.market_id).await {
+                if market.liquidity < self.config.min_liquidity_usd {
+                    warn!(
+                        market_id = %update.market_id,
+                        liquidity = %market.liquidity,
+                        min_required = %self.config.min_liquidity_usd,
+                        "Insufficient liquidity, skipping signal (batch)"
+                    );
+                    continue;
+                }
+            }
+
+            // Get price from orderbook mid
+            let price = update.orderbook.mid_price();
+            let size = match price {
+                Some(p) if !p.is_zero() => self.config.order_size_usd / p,
+                _ => Decimal::ZERO,
+            };
+
+            let signal = TradeSignal {
+                id: format!(
+                    "sig_imbalance_{}_{}_{}",
+                    token_id,
+                    Utc::now().timestamp_millis(),
+                    rand_suffix()
+                ),
+                strategy_id: self.id.clone(),
+                market_id: update.market_id.clone(),
+                token_id: token_id.clone(),
+                outcome,
+                side,
+                price,
+                size,
+                size_usd: self.config.order_size_usd,
+                order_type: OrderType::Fok,
+                priority: Priority::High,
+                timestamp: Utc::now(),
+                reason: format!(
+                    "Orderbook imbalance {:.2}:1 detected ({} bias, batch)",
+                    imbalance.ratio, direction
+                ),
+                metadata: serde_json::json!({
+                    "imbalance_ratio": imbalance.ratio.to_string(),
+                    "bid_volume": imbalance.bid_volume.to_string(),
+                    "ask_volume": imbalance.ask_volume.to_string(),
+                    "direction": direction,
+                    "threshold": self.config.imbalance_threshold.to_string(),
+                    "depth_levels": self.config.depth_levels,
+                    "value_weighted": self.config.use_value_weighting,
+                    "batch_processed": true,
+                }),
+            };
+
+            signals.push(signal);
+
+            // Set cooldown
+            self.set_cooldown(&token_id).await;
+        }
+
+        Ok(signals)
+    }
+
+    fn supports_batch(&self) -> bool {
+        true
+    }
+
     fn accepts_event(&self, event: &SystemEvent) -> bool {
         matches!(event, SystemEvent::OrderbookUpdate(_))
     }

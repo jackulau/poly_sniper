@@ -9,18 +9,18 @@ use chrono::Utc;
 use clap::{Parser, Subcommand};
 use commands::StatsCommand;
 use polysniper_core::{
-    AppConfig, ConfigChangedEvent, ConfigType, DiscordConfig, EventBus, HeartbeatEvent,
-    OrderExecutor, RiskDecision, RiskValidator, StateManager, StateProvider, Strategy,
-    SystemEvent, TradeSignal,
+    AppConfig, BatchConfig, ConfigChangedEvent, ConfigType, DiscordConfig, EventBatch, EventBus,
+    HeartbeatEvent, OrderExecutor, RiskDecision, RiskValidator, StateManager, StateProvider,
+    Strategy, SystemEvent, TradeSignal, should_bypass_batching,
 };
 use polysniper_data::{BroadcastEventBus, GammaClient, MarketCache, WebhookServer, WsManager};
 use polysniper_discord::DiscordNotifier;
 use polysniper_execution::{GasOptimizer, OrderBuilder, OrderSubmitter};
 use polysniper_observability::{
-    init_logging, record_event_processing, record_new_market, record_order, record_risk_rejection,
-    record_signal, record_strategy_error, record_strategy_processing, start_metrics_server,
-    update_markets_monitored, update_uptime, AlertManager, AlertingConfig, LogFormat, SlackConfig,
-    TelegramConfig,
+    init_logging, record_batch_deduplication, record_batch_processed, record_batch_processing,
+    record_event_processing, record_new_market, record_order, record_risk_rejection, record_signal,
+    record_strategy_error, record_strategy_processing, start_metrics_server, update_markets_monitored,
+    update_uptime, AlertManager, AlertingConfig, LogFormat, SlackConfig, TelegramConfig,
 };
 use polysniper_persistence::{
     calculate_trade_pnl, CostBasisMethod, DailyPnlRepository, Database,
@@ -512,8 +512,11 @@ impl App {
             }
         });
 
-        // Main event processing loop
+        // Main event processing loop with batching
         let mut event_rx = self.event_bus.subscribe();
+        let batch_config = BatchConfig::default();
+        let mut batch = EventBatch::new();
+        let mut flush_interval = interval(batch_config.max_batch_duration);
 
         info!(
             "Polysniper started. Dry run mode: {}",
@@ -521,6 +524,10 @@ impl App {
         );
         info!("Loaded {} strategies", self.strategies.len());
         info!("Monitoring {} markets", self.state.market_count().await);
+        info!(
+            "Batch processing enabled: max_size={}, max_duration={:?}",
+            batch_config.max_batch_size, batch_config.max_batch_duration
+        );
 
         // Update initial market count metric
         update_markets_monitored(self.state.market_count().await as i64);
@@ -535,25 +542,68 @@ impl App {
 
         loop {
             tokio::select! {
+                biased; // Prioritize shutdown
+
                 _ = shutdown_rx.recv() => {
                     info!("Shutting down...");
+                    // Process any remaining events in batch before shutdown
+                    if !batch.is_empty() {
+                        if let Err(e) = self.process_batch(batch.drain()).await {
+                            error!("Error processing final batch: {}", e);
+                        }
+                    }
                     break;
                 }
+
+                // Timer-based flush
+                _ = flush_interval.tick() => {
+                    if !batch.is_empty() {
+                        let batch_size = batch.len();
+                        let unique_tokens = batch.affected_tokens().len();
+                        let events = batch.drain();
+
+                        record_batch_deduplication("mixed", unique_tokens, batch_size);
+                        record_batch_processed("market_updates", "timer");
+
+                        if let Err(e) = self.process_batch(events).await {
+                            error!("Error processing batch (timer): {}", e);
+                        }
+                    }
+                }
+
+                // Event arrival
                 event = event_rx.recv() => {
                     match event {
                         Ok(event) => {
-                            let event_start = Instant::now();
-                            let event_type = event.event_type().to_string();
+                            // Time-sensitive events bypass batching
+                            if should_bypass_batching(&event) {
+                                let event_start = Instant::now();
+                                let event_type = event.event_type().to_string();
 
-                            if let Err(e) = self.process_event(event).await {
-                                error!("Error processing event: {}", e);
+                                if let Err(e) = self.process_event(event).await {
+                                    error!("Error processing event: {}", e);
+                                }
+
+                                record_event_processing(
+                                    &event_type,
+                                    event_start.elapsed().as_secs_f64()
+                                );
+                            } else {
+                                // Add to batch
+                                if batch.push(event, &batch_config) {
+                                    // Batch full, process immediately
+                                    let batch_size = batch.len();
+                                    let unique_tokens = batch.affected_tokens().len();
+                                    let events = batch.drain();
+
+                                    record_batch_deduplication("mixed", unique_tokens, batch_size);
+                                    record_batch_processed("market_updates", "size");
+
+                                    if let Err(e) = self.process_batch(events).await {
+                                        error!("Error processing batch (size): {}", e);
+                                    }
+                                }
                             }
-
-                            // Record event processing metrics
-                            record_event_processing(
-                                &event_type,
-                                event_start.elapsed().as_secs_f64()
-                            );
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
                             warn!("Event bus lagged by {} messages", n);
@@ -762,6 +812,111 @@ impl App {
         if !signals.is_empty() {
             self.process_signals(signals).await?;
         }
+
+        Ok(())
+    }
+
+    /// Process a batch of events for improved throughput
+    ///
+    /// This method batches state updates and uses optimized batch processing
+    /// for strategies that support it.
+    async fn process_batch(&mut self, events: Vec<SystemEvent>) -> Result<()> {
+        let batch_start = Instant::now();
+        let batch_size = events.len();
+
+        if events.is_empty() {
+            return Ok(());
+        }
+
+        // Update state for all events first (batch state updates)
+        for event in &events {
+            match event {
+                SystemEvent::OrderbookUpdate(e) => {
+                    self.state.update_orderbook(e.orderbook.clone()).await;
+                }
+                SystemEvent::PriceChange(e) => {
+                    self.state
+                        .update_price(e.token_id.clone(), e.new_price)
+                        .await;
+                }
+                SystemEvent::NewMarket(e) => {
+                    self.state.update_market(e.market.clone()).await;
+                    record_new_market();
+                    update_markets_monitored(self.state.market_count().await as i64);
+                }
+                SystemEvent::GasPriceUpdate(e) => {
+                    if let Some(optimizer) = &self.gas_optimizer {
+                        optimizer.update_gas_price(e.gas_price.clone()).await;
+                        optimizer.update_gas_condition(e.condition).await;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Collect signals from all strategies
+        let mut all_signals: Vec<TradeSignal> = Vec::new();
+
+        for strategy in &self.strategies {
+            if !strategy.is_enabled() {
+                continue;
+            }
+
+            let strategy_start = Instant::now();
+
+            // Use batch processing for strategies that support it
+            let signals = if strategy.supports_batch() {
+                match strategy.process_batch(&events, self.state.as_ref()).await {
+                    Ok(signals) => signals,
+                    Err(e) => {
+                        warn!(
+                            strategy_id = %strategy.id(),
+                            error = %e,
+                            "Strategy error processing batch"
+                        );
+                        record_strategy_error(strategy.id());
+                        if let Some(alert_mgr) = &self.alert_manager {
+                            alert_mgr
+                                .alert_strategy_error(strategy.id(), &e.to_string())
+                                .await;
+                        }
+                        Vec::new()
+                    }
+                }
+            } else {
+                // Fallback to single-event processing
+                let mut signals = Vec::new();
+                for event in &events {
+                    if strategy.accepts_event(event) {
+                        match strategy.process_event(event, self.state.as_ref()).await {
+                            Ok(strategy_signals) => {
+                                signals.extend(strategy_signals);
+                            }
+                            Err(e) => {
+                                warn!(
+                                    strategy_id = %strategy.id(),
+                                    error = %e,
+                                    "Strategy error processing event (batch fallback)"
+                                );
+                                record_strategy_error(strategy.id());
+                            }
+                        }
+                    }
+                }
+                signals
+            };
+
+            record_strategy_processing(strategy.id(), strategy_start.elapsed().as_secs_f64());
+            all_signals.extend(signals);
+        }
+
+        // Process collected signals
+        if !all_signals.is_empty() {
+            self.process_signals(all_signals).await?;
+        }
+
+        // Record batch metrics
+        record_batch_processing("market_updates", batch_size, batch_start.elapsed().as_secs_f64());
 
         Ok(())
     }
