@@ -1279,6 +1279,58 @@ impl Default for ConnectionConfig {
                 "https://clob.polymarket.com/".to_string(),
                 "https://gamma-api.polymarket.com/".to_string(),
             ],
+/// Configuration for the volume monitor used in participation rate adaptation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VolumeMonitorConfig {
+    /// How far back to look for volume history (default: 3600 seconds = 1 hour)
+    pub history_window_secs: u64,
+    /// Granularity of volume observations (default: 60 seconds)
+    pub observation_interval_secs: u64,
+    /// Exponential moving average smoothing factor (default: 0.2)
+    /// Higher values give more weight to recent observations
+    pub smoothing_factor: Decimal,
+}
+
+impl Default for VolumeMonitorConfig {
+    fn default() -> Self {
+        Self {
+            history_window_secs: 3600,
+            observation_interval_secs: 60,
+            smoothing_factor: Decimal::new(2, 1), // 0.2
+        }
+    }
+}
+
+/// Configuration for adaptive participation rate calculation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParticipationConfig {
+    /// Base participation rate (default: 0.10 = 10%)
+    pub base_rate: Decimal,
+    /// Minimum participation rate floor (default: 0.02 = 2%)
+    pub min_rate: Decimal,
+    /// Maximum participation rate ceiling (default: 0.25 = 25%)
+    pub max_rate: Decimal,
+    /// How aggressively to scale with volume (default: 0.5)
+    /// Higher values make participation more responsive to volume changes
+    pub volume_scaling_factor: Decimal,
+    /// Additional participation boost for urgent orders (default: 0.05 = 5%)
+    pub urgency_boost: Decimal,
+    /// Boost participation in final 20% of execution window (default: 1.3 = 30% boost)
+    pub time_pressure_boost: Decimal,
+    /// Threshold for time pressure (remaining time percentage below which boost applies)
+    pub time_pressure_threshold: Decimal,
+}
+
+impl Default for ParticipationConfig {
+    fn default() -> Self {
+        Self {
+            base_rate: Decimal::new(1, 1),            // 0.10 = 10%
+            min_rate: Decimal::new(2, 2),             // 0.02 = 2%
+            max_rate: Decimal::new(25, 2),            // 0.25 = 25%
+            volume_scaling_factor: Decimal::new(5, 1), // 0.5
+            urgency_boost: Decimal::new(5, 2),        // 0.05 = 5%
+            time_pressure_boost: Decimal::new(13, 1), // 1.3 = 30% boost
+            time_pressure_threshold: Decimal::new(2, 1), // 0.2 = 20%
         }
     }
 }
