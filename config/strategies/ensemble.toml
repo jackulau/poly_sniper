@@ -1,0 +1,114 @@
+# Ensemble Prediction Configuration
+# Multi-LLM prediction system with weighted aggregation and disagreement handling
+#
+# This file is included in the llm_prediction.toml strategy config via the [ensemble] section.
+# To enable ensemble mode, copy the [ensemble] section to your llm_prediction.toml file.
+
+# Example ensemble configuration for llm_prediction.toml:
+# Add this to the end of your llm_prediction.toml to enable ensemble mode
+
+[ensemble]
+# Enable/disable ensemble mode
+enabled = false
+
+# Aggregation strategy for combining predictions
+# Options: "weighted_average", "voting", "confidence_maximum", "bayesian_aggregation"
+aggregation_strategy = "weighted_average"
+
+# Minimum agreement threshold (0.0-1.0) - below this, abstain from trading
+min_agreement_threshold = 0.60
+
+# High agreement threshold (0.0-1.0) - above this, use full position size
+high_agreement_threshold = 0.80
+
+# Timeout for each provider in seconds
+timeout_secs = 30
+
+# Maximum total cost per query across all providers (USD)
+max_cost_per_query = 0.10
+
+# Minimum number of providers that must respond for valid ensemble
+min_providers = 2
+
+# Provider configurations
+# Each provider queries a different LLM model via OpenRouter
+
+[[ensemble.providers]]
+type = "openrouter"
+model = "x-ai/grok-3-latest"
+enabled = true
+weight = 1.0
+cost_per_request = 0.02
+# temperature = 0.3  # Optional: override default
+# max_tokens = 1024  # Optional: override default
+
+[[ensemble.providers]]
+type = "openrouter"
+model = "anthropic/claude-3.5-sonnet"
+enabled = true
+weight = 1.2
+cost_per_request = 0.015
+
+[[ensemble.providers]]
+type = "openrouter"
+model = "openai/gpt-4-turbo"
+enabled = true
+weight = 1.1
+cost_per_request = 0.03
+
+[[ensemble.providers]]
+type = "openrouter"
+model = "google/gemini-pro-1.5"
+enabled = false
+weight = 0.9
+cost_per_request = 0.01
+
+[[ensemble.providers]]
+type = "openrouter"
+model = "meta-llama/llama-3.3-70b-instruct"
+enabled = false
+weight = 0.8
+cost_per_request = 0.005
+
+# Model weights explanation:
+# - weight > 1.0: Give more influence to historically accurate models
+# - weight < 1.0: Give less influence to less reliable models
+# - weight = 0.0: Effectively disable without removing from config
+# - Weights are normalized during aggregation
+
+# Cost optimization:
+# The system will automatically select models within budget using a value metric:
+# value = accuracy_weight / cost_per_request
+# Higher value models are preferred when budget is constrained
+
+# Aggregation strategies:
+#
+# 1. weighted_average (default):
+#    Combines probabilities weighted by model accuracy
+#    Final probability = sum(prob_i * weight_i) / sum(weight_i)
+#
+# 2. voting:
+#    Each model votes YES or NO, weighted by confidence
+#    vote_weight = accuracy_weight * confidence
+#    Final prediction = majority of weighted votes
+#
+# 3. confidence_maximum:
+#    Uses the prediction from the model with highest (confidence * weight)
+#    Good when one model is clearly more confident
+#
+# 4. bayesian_aggregation:
+#    Treats each prediction as a Bayesian update on prior probability
+#    More sophisticated combination that accounts for uncertainty
+
+# Disagreement handling:
+#
+# When models disagree:
+# - agreement_score = majority_count / total_count
+# - If agreement < min_agreement_threshold: ABSTAIN (no trade)
+# - If agreement < high_agreement_threshold: REDUCE SIZE by agreement factor
+# - If agreement >= high_agreement_threshold: FULL SIZE
+#
+# Example: 2 YES, 1 NO with min=0.6, high=0.8
+# - agreement = 2/3 = 0.67
+# - 0.67 > 0.6 (min), so proceed
+# - 0.67 < 0.8 (high), so reduce size to 67%

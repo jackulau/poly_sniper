@@ -1,13 +1,15 @@
 //! LLM Prediction Strategy
 //!
 //! Analyzes Polymarket markets using an LLM and generates trade signals
-//! based on confidence scores and price edge.
+//! based on confidence scores and price edge. Supports both single-model
+//! and ensemble multi-LLM modes.
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use polysniper_core::{
-    Market, MarketId, OrderType, Outcome, Priority, Side, StateProvider, Strategy, StrategyError,
-    SystemEvent, TradeSignal,
+    DisagreementResolution, EnsembleConfig, EnsemblePrediction, Market, MarketContext,
+    MarketId, OrderType, Outcome, Priority, Side, StateProvider, Strategy,
+    StrategyError, SystemEvent, TradeSignal,
 };
 use polysniper_data::{
     ChatCompletionRequest, ChatMessage, OpenRouterClient, OpenRouterConfig, ResponseFormat,
@@ -22,12 +24,14 @@ use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, info, warn};
 
+use crate::ensemble::EnsembleOrchestrator;
+
 /// LLM Prediction Strategy Configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmPredictionConfig {
     /// Whether the strategy is enabled
     pub enabled: bool,
-    /// LLM model to use (e.g., "x-ai/grok-3-latest")
+    /// LLM model to use (e.g., "x-ai/grok-3-latest") - used in single model mode
     pub model: String,
     /// Environment variable containing the API key
     pub api_key_env: String,
@@ -66,6 +70,9 @@ pub struct LlmPredictionConfig {
     /// Override the default system prompt
     #[serde(default)]
     pub system_prompt_override: Option<String>,
+    /// Ensemble configuration (optional - enables multi-LLM mode)
+    #[serde(default)]
+    pub ensemble: Option<EnsembleConfig>,
 }
 
 fn default_max_tokens() -> u32 {
@@ -100,11 +107,12 @@ impl Default for LlmPredictionConfig {
             tags: Vec::new(),
             keywords: Vec::new(),
             system_prompt_override: None,
+            ensemble: None,
         }
     }
 }
 
-/// LLM prediction response
+/// LLM prediction response (single model mode)
 #[derive(Debug, Clone, Deserialize)]
 pub struct LlmPrediction {
     /// Prediction: "yes", "no", or "hold"
@@ -124,6 +132,13 @@ struct CachedPrediction {
     timestamp: DateTime<Utc>,
 }
 
+/// Cached ensemble prediction with timestamp
+struct CachedEnsemblePrediction {
+    prediction: EnsemblePrediction,
+    resolution: DisagreementResolution,
+    timestamp: DateTime<Utc>,
+}
+
 /// LLM Prediction Strategy
 pub struct LlmPredictionStrategy {
     id: String,
@@ -131,7 +146,9 @@ pub struct LlmPredictionStrategy {
     enabled: Arc<AtomicBool>,
     openrouter_client: OpenRouterClient,
     prediction_cache: Arc<RwLock<HashMap<MarketId, CachedPrediction>>>,
+    ensemble_cache: Arc<RwLock<HashMap<MarketId, CachedEnsemblePrediction>>>,
     last_analysis_time: Arc<RwLock<DateTime<Utc>>>,
+    ensemble_orchestrator: Option<EnsembleOrchestrator>,
 }
 
 impl LlmPredictionStrategy {
@@ -146,13 +163,39 @@ impl LlmPredictionStrategy {
         })?;
 
         let openrouter_config = OpenRouterConfig {
-            api_key,
+            api_key: api_key.clone(),
             default_model: config.model.clone(),
             ..Default::default()
         };
 
         let openrouter_client = OpenRouterClient::new(openrouter_config)
             .map_err(|e| StrategyError::InitializationError(e.to_string()))?;
+
+        // Initialize ensemble orchestrator if configured
+        let ensemble_orchestrator = if let Some(ensemble_config) = &config.ensemble {
+            if ensemble_config.enabled {
+                match EnsembleOrchestrator::new(ensemble_config.clone(), &api_key) {
+                    Ok(orchestrator) => {
+                        info!(
+                            provider_count = orchestrator.provider_count(),
+                            "Initialized ensemble orchestrator"
+                        );
+                        Some(orchestrator)
+                    }
+                    Err(e) => {
+                        warn!(
+                            error = %e,
+                            "Failed to initialize ensemble orchestrator, falling back to single model"
+                        );
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         let enabled = config.enabled;
 
@@ -162,8 +205,15 @@ impl LlmPredictionStrategy {
             enabled: Arc::new(AtomicBool::new(enabled)),
             openrouter_client,
             prediction_cache: Arc::new(RwLock::new(HashMap::new())),
+            ensemble_cache: Arc::new(RwLock::new(HashMap::new())),
             last_analysis_time: Arc::new(RwLock::new(Utc::now() - chrono::Duration::hours(1))),
+            ensemble_orchestrator,
         })
+    }
+
+    /// Check if ensemble mode is active
+    pub fn is_ensemble_mode(&self) -> bool {
+        self.ensemble_orchestrator.is_some()
     }
 
     /// Build the system prompt for market analysis
@@ -246,6 +296,38 @@ Analyze this market and provide your prediction."#,
         )
     }
 
+    /// Create market context from Market and price
+    fn create_market_context(&self, market: &Market, yes_price: Decimal) -> MarketContext {
+        let time_remaining = market.end_date.map(|end_date| {
+            let now = Utc::now();
+            if end_date > now {
+                let duration = end_date - now;
+                let days = duration.num_days();
+                let hours = duration.num_hours() % 24;
+                if days > 0 {
+                    format!("{} days {} hours", days, hours)
+                } else {
+                    format!("{} hours", duration.num_hours())
+                }
+            } else {
+                "Expired".to_string()
+            }
+        });
+
+        MarketContext {
+            market_id: market.condition_id.clone(),
+            question: market.question.clone(),
+            description: market.description.clone(),
+            yes_price,
+            no_price: Decimal::ONE - yes_price,
+            volume: market.volume,
+            liquidity: market.liquidity,
+            time_remaining,
+            end_date: market.end_date,
+            metadata: None,
+        }
+    }
+
     /// Parse the LLM response into a prediction
     fn parse_llm_response(&self, content: &str) -> Result<LlmPrediction, StrategyError> {
         // Try to extract JSON from the response
@@ -268,7 +350,7 @@ Analyze this market and provide your prediction."#,
         })
     }
 
-    /// Check if a prediction should generate a signal
+    /// Check if a prediction should generate a signal (single model mode)
     fn should_generate_signal(&self, prediction: &LlmPrediction, current_price: Decimal) -> bool {
         // Skip "hold" predictions
         if prediction.prediction.to_lowercase() == "hold" {
@@ -295,6 +377,37 @@ Analyze this market and provide your prediction."#,
         }
 
         true
+    }
+
+    /// Check if ensemble prediction should generate a signal
+    fn should_generate_ensemble_signal(
+        &self,
+        ensemble: &EnsemblePrediction,
+        resolution: &DisagreementResolution,
+        current_price: Decimal,
+    ) -> bool {
+        // Check disagreement resolution
+        if matches!(resolution, DisagreementResolution::Abstain { .. }) {
+            return false;
+        }
+
+        // Check confidence threshold
+        let confidence_threshold = Decimal::try_from(self.config.confidence_threshold)
+            .unwrap_or(dec!(0.75));
+        if ensemble.confidence < confidence_threshold {
+            return false;
+        }
+
+        // Check price edge
+        let is_yes = ensemble.is_yes();
+        let predicted_prob = ensemble.probability;
+        let edge = if is_yes {
+            predicted_prob - current_price
+        } else {
+            (Decimal::ONE - predicted_prob) - (Decimal::ONE - current_price)
+        };
+
+        edge >= self.config.min_price_edge
     }
 
     /// Filter markets based on configuration
@@ -350,7 +463,60 @@ Analyze this market and provide your prediction."#,
             .collect()
     }
 
-    /// Analyze a market using the LLM
+    /// Analyze a market using ensemble mode
+    async fn analyze_market_ensemble(
+        &self,
+        market: &Market,
+        state: &dyn StateProvider,
+    ) -> Result<Option<(EnsemblePrediction, DisagreementResolution)>, StrategyError> {
+        let orchestrator = match &self.ensemble_orchestrator {
+            Some(o) => o,
+            None => return Ok(None),
+        };
+
+        // Get current price
+        let current_price = match state.get_price(&market.yes_token_id).await {
+            Some(p) => p,
+            None => {
+                debug!(
+                    market_id = %market.condition_id,
+                    "No price available for market, skipping"
+                );
+                return Ok(None);
+            }
+        };
+
+        // Create market context
+        let context = self.create_market_context(market, current_price);
+
+        // Get ensemble prediction
+        match orchestrator.predict(&context).await {
+            Ok((prediction, resolution)) => {
+                debug!(
+                    market_id = %market.condition_id,
+                    providers = %prediction.provider_count,
+                    agreement = %prediction.agreement_score,
+                    prediction = ?prediction.prediction,
+                    confidence = %prediction.confidence,
+                    "Ensemble analysis complete"
+                );
+                Ok(Some((prediction, resolution)))
+            }
+            Err(e) => {
+                warn!(
+                    market_id = %market.condition_id,
+                    error = %e,
+                    "Ensemble prediction failed"
+                );
+                Err(StrategyError::ProcessingError(format!(
+                    "Ensemble prediction failed: {}",
+                    e
+                )))
+            }
+        }
+    }
+
+    /// Analyze a market using single LLM mode
     async fn analyze_market(
         &self,
         market: &Market,
@@ -411,7 +577,7 @@ Analyze this market and provide your prediction."#,
         Ok(Some(prediction))
     }
 
-    /// Generate a trade signal from a prediction
+    /// Generate a trade signal from a single-model prediction
     fn generate_signal(
         &self,
         market: &Market,
@@ -480,10 +646,92 @@ Analyze this market and provide your prediction."#,
         }
     }
 
+    /// Generate a trade signal from an ensemble prediction
+    fn generate_ensemble_signal(
+        &self,
+        market: &Market,
+        ensemble: &EnsemblePrediction,
+        resolution: &DisagreementResolution,
+        current_price: Decimal,
+    ) -> TradeSignal {
+        let is_yes = ensemble.is_yes();
+
+        let (side, outcome, token_id, price) = if is_yes {
+            (
+                Side::Buy,
+                Outcome::Yes,
+                market.yes_token_id.clone(),
+                current_price,
+            )
+        } else {
+            (
+                Side::Buy,
+                Outcome::No,
+                market.no_token_id.clone(),
+                Decimal::ONE - current_price,
+            )
+        };
+
+        // Apply size multiplier from disagreement resolution
+        let base_size = if price.is_zero() {
+            Decimal::ZERO
+        } else {
+            self.config.order_size_usd / price
+        };
+        let size = base_size * resolution.size_multiplier();
+
+        let order_type = match self.config.order_type.to_lowercase().as_str() {
+            "gtc" => OrderType::Gtc,
+            "fok" => OrderType::Fok,
+            "gtd" => OrderType::Gtd,
+            _ => OrderType::Gtc,
+        };
+
+        let prediction_str = if is_yes { "YES" } else { "NO" };
+
+        TradeSignal {
+            id: format!(
+                "sig_ens_{}_{}_{}",
+                market.condition_id,
+                Utc::now().timestamp_millis(),
+                rand_suffix()
+            ),
+            strategy_id: self.id.clone(),
+            market_id: market.condition_id.clone(),
+            token_id,
+            outcome,
+            side,
+            price: Some(price),
+            size,
+            size_usd: self.config.order_size_usd * resolution.size_multiplier(),
+            order_type,
+            priority: Priority::Normal,
+            timestamp: Utc::now(),
+            reason: format!(
+                "Ensemble ({} models) predicts {} with {:.0}% confidence, {:.0}% agreement. {}",
+                ensemble.provider_count,
+                prediction_str,
+                ensemble.confidence * dec!(100),
+                ensemble.agreement_score * dec!(100),
+                truncate(&ensemble.reasoning, 150)
+            ),
+            metadata: serde_json::json!({
+                "ensemble_mode": true,
+                "provider_count": ensemble.provider_count,
+                "confidence": ensemble.confidence.to_string(),
+                "probability": ensemble.probability.to_string(),
+                "agreement_score": ensemble.agreement_score.to_string(),
+                "model_contributions": ensemble.model_contributions,
+                "size_multiplier": resolution.size_multiplier().to_string(),
+                "full_reasoning": ensemble.reasoning,
+            }),
+        }
+    }
+
     /// Check if cached prediction is still valid
-    fn is_cache_valid(&self, cached: &CachedPrediction) -> bool {
+    fn is_cache_valid(&self, timestamp: DateTime<Utc>) -> bool {
         let cache_duration = chrono::Duration::seconds(self.config.analysis_interval_secs as i64);
-        Utc::now() - cached.timestamp < cache_duration
+        Utc::now() - timestamp < cache_duration
     }
 }
 
@@ -494,7 +742,11 @@ impl Strategy for LlmPredictionStrategy {
     }
 
     fn name(&self) -> &str {
-        "LLM Prediction Strategy"
+        if self.is_ensemble_mode() {
+            "LLM Ensemble Prediction Strategy"
+        } else {
+            "LLM Prediction Strategy"
+        }
     }
 
     fn accepts_event(&self, event: &SystemEvent) -> bool {
@@ -529,7 +781,12 @@ impl Strategy for LlmPredictionStrategy {
             *last_time = Utc::now();
         }
 
-        info!("Starting LLM market analysis");
+        let mode = if self.is_ensemble_mode() {
+            "ensemble"
+        } else {
+            "single"
+        };
+        info!(mode = %mode, "Starting LLM market analysis");
 
         // Get all markets and filter
         let all_markets = state.get_all_markets().await;
@@ -549,75 +806,169 @@ impl Strategy for LlmPredictionStrategy {
 
         // Process each market
         for market in &markets_to_analyze {
-            // Check cache first
-            {
-                let cache = self.prediction_cache.read().await;
-                if let Some(cached) = cache.get(&market.condition_id) {
-                    if self.is_cache_valid(cached) {
-                        debug!(
-                            market_id = %market.condition_id,
-                            "Using cached prediction"
-                        );
+            if self.is_ensemble_mode() {
+                // Ensemble mode
+                // Check cache first
+                {
+                    let cache = self.ensemble_cache.read().await;
+                    if let Some(cached) = cache.get(&market.condition_id) {
+                        if self.is_cache_valid(cached.timestamp) {
+                            debug!(
+                                market_id = %market.condition_id,
+                                "Using cached ensemble prediction"
+                            );
 
-                        // Get current price and check if we should generate signal
+                            if let Some(current_price) = state.get_price(&market.yes_token_id).await
+                            {
+                                if self.should_generate_ensemble_signal(
+                                    &cached.prediction,
+                                    &cached.resolution,
+                                    current_price,
+                                ) {
+                                    let signal = self.generate_ensemble_signal(
+                                        market,
+                                        &cached.prediction,
+                                        &cached.resolution,
+                                        current_price,
+                                    );
+                                    signals.push(signal);
+                                }
+                            }
+                            continue;
+                        }
+                    }
+                }
+
+                // Analyze market with ensemble
+                match self.analyze_market_ensemble(market, state).await {
+                    Ok(Some((prediction, resolution))) => {
+                        // Cache the prediction
+                        {
+                            let mut cache = self.ensemble_cache.write().await;
+                            cache.insert(
+                                market.condition_id.clone(),
+                                CachedEnsemblePrediction {
+                                    prediction: prediction.clone(),
+                                    resolution: resolution.clone(),
+                                    timestamp: Utc::now(),
+                                },
+                            );
+                        }
+
+                        // Check if we should generate a signal
                         if let Some(current_price) = state.get_price(&market.yes_token_id).await {
-                            if self.should_generate_signal(&cached.prediction, current_price) {
-                                let signal =
-                                    self.generate_signal(market, &cached.prediction, current_price);
+                            if self.should_generate_ensemble_signal(
+                                &prediction,
+                                &resolution,
+                                current_price,
+                            ) {
+                                let signal = self.generate_ensemble_signal(
+                                    market,
+                                    &prediction,
+                                    &resolution,
+                                    current_price,
+                                );
+                                info!(
+                                    market_id = %market.condition_id,
+                                    providers = %prediction.provider_count,
+                                    agreement = %prediction.agreement_score,
+                                    confidence = %prediction.confidence,
+                                    "Generated ensemble trade signal"
+                                );
                                 signals.push(signal);
                             }
                         }
-                        continue;
                     }
-                }
-            }
-
-            // Analyze market
-            match self.analyze_market(market, state).await {
-                Ok(Some(prediction)) => {
-                    // Cache the prediction
-                    {
-                        let mut cache = self.prediction_cache.write().await;
-                        cache.insert(
-                            market.condition_id.clone(),
-                            CachedPrediction {
-                                prediction: prediction.clone(),
-                                timestamp: Utc::now(),
-                            },
+                    Ok(None) => {
+                        debug!(
+                            market_id = %market.condition_id,
+                            "No ensemble prediction generated"
                         );
                     }
-
-                    // Check if we should generate a signal
-                    if let Some(current_price) = state.get_price(&market.yes_token_id).await {
-                        if self.should_generate_signal(&prediction, current_price) {
-                            let signal = self.generate_signal(market, &prediction, current_price);
-                            info!(
+                    Err(e) => {
+                        warn!(
+                            market_id = %market.condition_id,
+                            error = %e,
+                            "Failed to analyze market with ensemble"
+                        );
+                    }
+                }
+            } else {
+                // Single model mode
+                // Check cache first
+                {
+                    let cache = self.prediction_cache.read().await;
+                    if let Some(cached) = cache.get(&market.condition_id) {
+                        if self.is_cache_valid(cached.timestamp) {
+                            debug!(
                                 market_id = %market.condition_id,
-                                prediction = %prediction.prediction,
-                                confidence = %prediction.confidence,
-                                "Generated trade signal"
+                                "Using cached prediction"
                             );
-                            signals.push(signal);
+
+                            if let Some(current_price) = state.get_price(&market.yes_token_id).await
+                            {
+                                if self.should_generate_signal(&cached.prediction, current_price) {
+                                    let signal = self.generate_signal(
+                                        market,
+                                        &cached.prediction,
+                                        current_price,
+                                    );
+                                    signals.push(signal);
+                                }
+                            }
+                            continue;
                         }
                     }
                 }
-                Ok(None) => {
-                    debug!(
-                        market_id = %market.condition_id,
-                        "No prediction generated"
-                    );
-                }
-                Err(e) => {
-                    warn!(
-                        market_id = %market.condition_id,
-                        error = %e,
-                        "Failed to analyze market"
-                    );
+
+                // Analyze market
+                match self.analyze_market(market, state).await {
+                    Ok(Some(prediction)) => {
+                        // Cache the prediction
+                        {
+                            let mut cache = self.prediction_cache.write().await;
+                            cache.insert(
+                                market.condition_id.clone(),
+                                CachedPrediction {
+                                    prediction: prediction.clone(),
+                                    timestamp: Utc::now(),
+                                },
+                            );
+                        }
+
+                        // Check if we should generate a signal
+                        if let Some(current_price) = state.get_price(&market.yes_token_id).await {
+                            if self.should_generate_signal(&prediction, current_price) {
+                                let signal =
+                                    self.generate_signal(market, &prediction, current_price);
+                                info!(
+                                    market_id = %market.condition_id,
+                                    prediction = %prediction.prediction,
+                                    confidence = %prediction.confidence,
+                                    "Generated trade signal"
+                                );
+                                signals.push(signal);
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        debug!(
+                            market_id = %market.condition_id,
+                            "No prediction generated"
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            market_id = %market.condition_id,
+                            error = %e,
+                            "Failed to analyze market"
+                        );
+                    }
                 }
             }
 
-            // Delay between API calls
-            if self.config.api_call_delay_ms > 0 {
+            // Delay between API calls (only in single mode; ensemble handles its own timing)
+            if !self.is_ensemble_mode() && self.config.api_call_delay_ms > 0 {
                 sleep(Duration::from_millis(self.config.api_call_delay_ms)).await;
             }
         }
@@ -628,9 +979,21 @@ impl Strategy for LlmPredictionStrategy {
     }
 
     async fn initialize(&mut self, _state: &dyn StateProvider) -> Result<(), StrategyError> {
+        let mode = if self.is_ensemble_mode() {
+            format!(
+                "ensemble ({} providers)",
+                self.ensemble_orchestrator
+                    .as_ref()
+                    .map(|o| o.provider_count())
+                    .unwrap_or(0)
+            )
+        } else {
+            format!("single ({})", self.config.model)
+        };
+
         info!(
             strategy_id = %self.id,
-            model = %self.config.model,
+            mode = %mode,
             interval_secs = %self.config.analysis_interval_secs,
             confidence_threshold = %self.config.confidence_threshold,
             "Initializing LLM prediction strategy"
@@ -649,6 +1012,27 @@ impl Strategy for LlmPredictionStrategy {
     async fn reload_config(&mut self, config_content: &str) -> Result<(), StrategyError> {
         let new_config: LlmPredictionConfig = toml::from_str(config_content)
             .map_err(|e| StrategyError::ConfigError(format!("Failed to parse config: {}", e)))?;
+
+        // Reinitialize ensemble orchestrator if config changed
+        if let Some(ensemble_config) = &new_config.ensemble {
+            if ensemble_config.enabled {
+                if let Ok(api_key) = std::env::var(&new_config.api_key_env) {
+                    match EnsembleOrchestrator::new(ensemble_config.clone(), &api_key) {
+                        Ok(orchestrator) => {
+                            self.ensemble_orchestrator = Some(orchestrator);
+                        }
+                        Err(e) => {
+                            warn!(error = %e, "Failed to reinitialize ensemble orchestrator");
+                            self.ensemble_orchestrator = None;
+                        }
+                    }
+                }
+            } else {
+                self.ensemble_orchestrator = None;
+            }
+        } else {
+            self.ensemble_orchestrator = None;
+        }
 
         self.config = new_config;
         tracing::info!(strategy_id = %self.id, "Reloaded LLM prediction strategy config");
@@ -698,11 +1082,20 @@ mod tests {
         assert_eq!(config.order_size_usd, dec!(50));
         assert_eq!(config.min_liquidity_usd, dec!(5000));
         assert_eq!(config.order_type, "Gtc");
+        assert!(config.ensemble.is_none());
+    }
+
+    #[test]
+    fn test_config_with_ensemble() {
+        let config = LlmPredictionConfig {
+            ensemble: Some(EnsembleConfig::default()),
+            ..Default::default()
+        };
+        assert!(config.ensemble.is_some());
     }
 
     #[test]
     fn test_parse_llm_response_valid() {
-        // We can't easily test this without a strategy instance, but we can test JSON parsing
         let json = r#"{"prediction": "yes", "confidence": 0.85, "reasoning": "Test reasoning", "target_price": 0.65}"#;
         let prediction: LlmPrediction = serde_json::from_str(json).unwrap();
         assert_eq!(prediction.prediction, "yes");

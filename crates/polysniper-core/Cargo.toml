@@ -16,3 +16,4 @@ notify = { version = "6.1", default-features = false, features = ["macos_kqueue"
 
 [dev-dependencies]
 rust_decimal_macros.workspace = true
+tempfile = "3.12"
