@@ -353,6 +353,73 @@ pub struct CorrelationGroupConfig {
     pub markets: Vec<String>,
 }
 
+/// Correlation regime (market stress level)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum CorrelationRegime {
+    /// Normal market conditions - correlations at baseline levels
+    #[default]
+    Normal,
+    /// Elevated correlations - increased market stress
+    Elevated,
+    /// Crisis conditions - correlations at extreme levels
+    Crisis,
+}
+
+impl fmt::Display for CorrelationRegime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CorrelationRegime::Normal => write!(f, "Normal"),
+            CorrelationRegime::Elevated => write!(f, "Elevated"),
+            CorrelationRegime::Crisis => write!(f, "Crisis"),
+        }
+    }
+}
+
+/// Configuration for correlation regime detection
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrelationRegimeConfig {
+    /// Whether regime detection is enabled
+    pub enabled: bool,
+    /// Short-term rolling window in seconds (default 300 - 5 min)
+    pub short_window_secs: u64,
+    /// Long-term rolling window in seconds (default 86400 - 24 hours)
+    pub long_window_secs: u64,
+    /// Threshold for elevated regime (z-score or fraction above baseline)
+    /// Default 0.5 means 50% above the long-term average triggers elevated
+    pub elevated_threshold: Decimal,
+    /// Threshold for crisis regime (z-score or fraction above baseline)
+    /// Default 1.0 means 100% above the long-term average triggers crisis
+    pub crisis_threshold: Decimal,
+    /// Exposure limit multiplier during normal regime (default 1.0)
+    pub normal_limit_multiplier: Decimal,
+    /// Exposure limit multiplier during elevated regime (default 0.7)
+    pub elevated_limit_multiplier: Decimal,
+    /// Exposure limit multiplier during crisis regime (default 0.4)
+    pub crisis_limit_multiplier: Decimal,
+    /// Minimum samples required before regime detection activates
+    pub min_samples: usize,
+    /// Hysteresis factor to prevent regime flickering (0.0-1.0)
+    /// Correlation must drop by this factor below threshold to downgrade regime
+    pub hysteresis_factor: Decimal,
+}
+
+impl Default for CorrelationRegimeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            short_window_secs: 300,      // 5 minutes
+            long_window_secs: 86400,     // 24 hours
+            elevated_threshold: Decimal::new(5, 1),  // 0.5 (50% above baseline)
+            crisis_threshold: Decimal::ONE,          // 1.0 (100% above baseline)
+            normal_limit_multiplier: Decimal::ONE,
+            elevated_limit_multiplier: Decimal::new(7, 1),  // 0.7
+            crisis_limit_multiplier: Decimal::new(4, 1),    // 0.4
+            min_samples: 100,
+            hysteresis_factor: Decimal::new(1, 1),  // 0.1 (10%)
+        }
+    }
+}
+
 /// Correlation-aware position limit configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CorrelationConfig {
@@ -367,6 +434,9 @@ pub struct CorrelationConfig {
     /// Manual correlation groups (market slugs)
     #[serde(default)]
     pub groups: Vec<CorrelationGroupConfig>,
+    /// Correlation regime detection configuration
+    #[serde(default)]
+    pub regime: CorrelationRegimeConfig,
 }
 
 impl Default for CorrelationConfig {
@@ -377,6 +447,7 @@ impl Default for CorrelationConfig {
             window_secs: 3600,                         // 1 hour
             max_correlated_exposure_usd: Decimal::new(3000, 0),
             groups: Vec::new(),
+            regime: CorrelationRegimeConfig::default(),
         }
     }
 }
