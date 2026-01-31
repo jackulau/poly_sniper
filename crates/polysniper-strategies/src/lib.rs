@@ -8,6 +8,7 @@ pub mod ensemble;
 pub mod event_based;
 pub mod liquidity_provision;
 pub mod llm_prediction;
+pub mod microstructure_strategy;
 pub mod ml_processor;
 pub mod multi_leg;
 pub mod new_market;
@@ -18,6 +19,7 @@ pub mod sentiment_analyzer;
 pub mod sentiment_strategy;
 pub mod target_price;
 pub mod vpin;
+pub mod whale_detector;
 
 pub use arbitrage::{ArbitrageConfig, ArbitrageStrategy};
 pub use cross_asset::{AssetCorrelation, CorrelationType, CrossAssetConfig, CrossAssetStrategy};
@@ -38,4 +40,12 @@ pub use sentiment_strategy::{SentimentMarketMapping, SentimentStrategy, Sentimen
 pub use target_price::{PriceTarget, TargetDirection, TargetPriceConfig, TargetPriceStrategy};
 pub use vpin::{
     ToxicityLevel, TradeClassificationMethod, VolumeBucket, VpinCalculator, VpinConfig, VpinResult,
+};
+pub use whale_detector::{
+    AddressProfile, CumulativeContext, WhaleAction, WhaleAlert, WhaleAlertType,
+    WhaleClassification, WhaleDetector, WhaleDetectorConfig, WhaleTrade,
+};
+pub use microstructure_strategy::{
+    ImpactAdjustmentConfig, MicrostructureStrategy, MicrostructureStrategyConfig, ToxicityAction,
+    VpinTradingConfig, WhaleTradingConfig,
 };
