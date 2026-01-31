@@ -408,6 +408,85 @@ impl Default for ControlConfig {
     }
 }
 
+/// VaR calculation method
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VaRMethod {
+    /// Historical VaR using percentile of actual returns
+    Historical,
+    /// Parametric VaR assuming normal distribution
+    Parametric,
+}
+
+impl Default for VaRMethod {
+    fn default() -> Self {
+        VaRMethod::Historical
+    }
+}
+
+/// Value at Risk (VaR) and Conditional VaR configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaRConfig {
+    /// Whether VaR-based risk limits are enabled
+    pub enabled: bool,
+    /// VaR calculation method
+    pub method: VaRMethod,
+    /// Confidence level for VaR (e.g., 0.95 for 95% VaR)
+    pub confidence_level: Decimal,
+    /// Number of days of historical data to use
+    pub lookback_days: u32,
+    /// Maximum allowed daily portfolio VaR in USD
+    pub max_portfolio_var_usd: Decimal,
+    /// Maximum position VaR contribution as percentage of total (e.g., 0.25 = 25%)
+    pub max_position_var_contribution_pct: Decimal,
+    /// Whether to use CVaR instead of VaR for limit enforcement
+    pub use_cvar_for_limits: bool,
+}
+
+impl Default for VaRConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            method: VaRMethod::default(),
+            confidence_level: Decimal::new(95, 2), // 0.95
+            lookback_days: 30,
+            max_portfolio_var_usd: Decimal::new(500, 0), // $500
+            max_position_var_contribution_pct: Decimal::new(25, 2), // 0.25 (25%)
+            use_cvar_for_limits: false,
+        }
+    }
+}
+
+/// VaR calculation result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaRResult {
+    /// 1-day Value at Risk in USD
+    pub var_1d: Decimal,
+    /// 1-day Conditional VaR (Expected Shortfall) in USD
+    pub cvar_1d: Decimal,
+    /// 10-day VaR scaled from 1-day (using sqrt(10) rule)
+    pub var_10d: Decimal,
+    /// VaR contribution per position (market_id -> contribution USD)
+    pub position_contributions: std::collections::HashMap<MarketId, Decimal>,
+    /// Confidence level used for calculation
+    pub confidence_level: Decimal,
+    /// Timestamp of calculation
+    pub calculated_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl Default for VaRResult {
+    fn default() -> Self {
+        Self {
+            var_1d: Decimal::ZERO,
+            cvar_1d: Decimal::ZERO,
+            var_10d: Decimal::ZERO,
+            position_contributions: std::collections::HashMap::new(),
+            confidence_level: Decimal::new(95, 2),
+            calculated_at: chrono::Utc::now(),
+        }
+    }
+}
+
 /// Risk configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskConfig {
@@ -425,6 +504,9 @@ pub struct RiskConfig {
     /// Correlation-aware position limit configuration
     #[serde(default)]
     pub correlation: CorrelationConfig,
+    /// Value at Risk configuration
+    #[serde(default)]
+    pub var: VaRConfig,
 }
 
 impl Default for RiskConfig {
@@ -438,6 +520,7 @@ impl Default for RiskConfig {
             volatility: VolatilityConfig::default(),
             time_rules: TimeRulesConfig::default(),
             correlation: CorrelationConfig::default(),
+            var: VaRConfig::default(),
         }
     }
 }
@@ -870,7 +953,7 @@ impl Default for ResolutionExitConfig {
             enabled: true,
             default_exit_before_secs: 3600, // 1 hour
             exit_order_type: ExitOrderType::default(),
-            max_slippage: Decimal::new(2, 2), // 0.02 (2%)
+            max_slippage: Decimal::new(2, 2),           // 0.02 (2%)
             pnl_floor_usd: Some(Decimal::new(-100, 0)), // -$100
             pnl_floor_pct: None,
             hold_through_markets: Vec::new(),
@@ -890,7 +973,11 @@ impl ResolutionExitConfig {
 
     /// Get the exit threshold for a market (in seconds before resolution)
     pub fn get_exit_before_secs(&self, market_id: &str) -> u64 {
-        if let Some(override_config) = self.market_overrides.iter().find(|o| o.market_id == market_id) {
+        if let Some(override_config) = self
+            .market_overrides
+            .iter()
+            .find(|o| o.market_id == market_id)
+        {
             if let Some(secs) = override_config.exit_before_secs {
                 return secs;
             }

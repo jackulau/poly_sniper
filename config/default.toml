@@ -43,6 +43,24 @@ min_size_multiplier = 0.25
 # Maximum size multiplier ceiling (e.g., 1.5 = 150% of normal size in low volatility)
 max_size_multiplier = 1.5
 
+# Value at Risk (VaR) and Conditional VaR (CVaR) configuration
+[risk.var]
+# Whether VaR-based risk limits are enabled
+enabled = true
+# VaR calculation method: "historical" or "parametric"
+method = "historical"
+# Confidence level for VaR (e.g., 0.95 for 95% VaR)
+confidence_level = 0.95
+# Number of days of historical data to use for calculation
+lookback_days = 30
+# Maximum allowed daily portfolio VaR in USD
+max_portfolio_var_usd = 500
+# Maximum position VaR contribution as percentage of total (e.g., 0.25 = 25%)
+max_position_var_contribution_pct = 0.25
+# Whether to use CVaR (Expected Shortfall) instead of VaR for limit enforcement
+# CVaR is more conservative as it captures average tail losses
+use_cvar_for_limits = false
+
 [execution]
 # Set to true to log orders without actually submitting
 dry_run = true
