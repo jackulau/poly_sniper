@@ -1,0 +1,90 @@
+# Market Microstructure Strategy Configuration
+#
+# Combines VPIN analysis, whale detection, and market impact signals
+# to generate intelligent trading decisions and risk adjustments.
+
+[strategy]
+enabled = true
+id = "microstructure"
+name = "Market Microstructure Strategy"
+
+# General settings
+min_confidence = "0.6"          # Minimum confidence to generate signals
+cooldown_secs = 300             # Seconds between signals for same token
+max_signals_per_hour = 10       # Maximum signals per hour (rate limiting)
+order_size_usd = "100"          # Default order size in USD
+
+# ============================================================================
+# VPIN-Based Trading
+# ============================================================================
+# Volume-synchronized Probability of Informed Trading (VPIN) measures order
+# flow toxicity. High VPIN indicates potential informed trading activity.
+
+[vpin_trading]
+enabled = true
+
+# Action when toxicity is HIGH (VPIN >= 0.7)
+# Options: "none", { reduce_positions = { multiplier = "X" } }, "halt_new_trades", "fade_the_crowd", "follow_the_crowd"
+high_toxicity_action = { reduce_positions = { multiplier = "0.5" } }
+
+# Action when toxicity is LOW (VPIN < 0.3) - favorable conditions
+low_toxicity_action = "none"
+
+# Position size multipliers based on toxicity level
+# Lower multipliers reduce exposure during unfavorable conditions
+[vpin_trading.toxicity_position_multiplier]
+low = "1.2"         # Favorable: increase size 20%
+normal = "1.0"      # Normal: standard size
+elevated = "0.7"    # Caution: reduce 30%
+high = "0.4"        # Danger: reduce 60%
+
+# ============================================================================
+# Whale-Based Trading
+# ============================================================================
+# Detects large trades and wallet activity to inform trading decisions.
+
+[whale_trading]
+enabled = true
+follow_whale = true                     # Whether to generate follow signals
+follow_confidence_threshold = "0.7"     # Minimum confidence to follow
+avoid_whale_threshold_usd = "10000"     # USD threshold to consider whale avoidance
+whale_position_multiplier = "0.6"       # Reduce position 40% when whale active
+
+# ============================================================================
+# Impact Adjustments
+# ============================================================================
+# Market impact-based trade execution adjustments.
+
+[impact_adjustments]
+enabled = true
+max_acceptable_impact_bps = "50"        # Max acceptable impact in basis points
+auto_slice_above_impact_bps = "25"      # Impact threshold to trigger slicing
+delay_high_impact_secs = 60             # Delay (seconds) when high impact detected
+
+# ============================================================================
+# VPIN Calculator Configuration
+# ============================================================================
+# Parameters for VPIN calculation.
+
+[vpin_config]
+enabled = true
+bucket_size_usd = "1000"                # Volume per bucket in USD
+lookback_buckets = 50                   # Number of buckets for VPIN calculation
+high_toxicity_threshold = "0.7"         # VPIN >= this is HIGH toxicity
+low_toxicity_threshold = "0.3"          # VPIN < this is LOW toxicity
+trade_classification = "quote_midpoint" # How to classify trades: "tick_rule", "quote_midpoint", "bulk_volume"
+
+# ============================================================================
+# Whale Detector Configuration
+# ============================================================================
+# Parameters for whale detection.
+
+[whale_detector_config]
+enabled = true
+whale_threshold_usd = "5000"            # Single trade threshold for whale alert
+aggregate_threshold_usd = "10000"       # Cumulative threshold in window
+aggregate_window_secs = 300             # Window for cumulative tracking (5 min)
+alert_on_detection = true               # Generate alerts on whale detection
+track_addresses = true                  # Enable address profiling
+address_history_limit = 100             # Max trades to track per address
+cooldown_secs = 60                      # Cooldown between same-address alerts

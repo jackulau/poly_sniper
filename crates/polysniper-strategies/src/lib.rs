@@ -6,6 +6,7 @@ pub mod arbitrage;
 pub mod event_based;
 pub mod liquidity_provision;
 pub mod llm_prediction;
+pub mod microstructure_strategy;
 pub mod ml_processor;
 pub mod multi_leg;
 pub mod new_market;
@@ -39,4 +40,8 @@ pub use vpin::{
 pub use whale_detector::{
     AddressProfile, CumulativeContext, WhaleAction, WhaleAlert, WhaleAlertType,
     WhaleClassification, WhaleDetector, WhaleDetectorConfig, WhaleTrade,
+};
+pub use microstructure_strategy::{
+    ImpactAdjustmentConfig, MicrostructureStrategy, MicrostructureStrategyConfig, ToxicityAction,
+    VpinTradingConfig, WhaleTradingConfig,
 };
