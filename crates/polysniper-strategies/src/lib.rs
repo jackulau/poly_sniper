@@ -16,6 +16,7 @@ pub mod sentiment_analyzer;
 pub mod sentiment_strategy;
 pub mod target_price;
 pub mod vpin;
+pub mod whale_detector;
 
 pub use arbitrage::{ArbitrageConfig, ArbitrageStrategy};
 pub use event_based::{EventBasedConfig, EventBasedStrategy};
@@ -34,4 +35,8 @@ pub use sentiment_strategy::{SentimentMarketMapping, SentimentStrategy, Sentimen
 pub use target_price::{PriceTarget, TargetDirection, TargetPriceConfig, TargetPriceStrategy};
 pub use vpin::{
     ToxicityLevel, TradeClassificationMethod, VolumeBucket, VpinCalculator, VpinConfig, VpinResult,
+};
+pub use whale_detector::{
+    AddressProfile, CumulativeContext, WhaleAction, WhaleAlert, WhaleAlertType,
+    WhaleClassification, WhaleDetector, WhaleDetectorConfig, WhaleTrade,
 };
