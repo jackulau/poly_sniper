@@ -25,6 +25,8 @@ pub mod sentiment_strategy;
 pub mod target_price;
 pub mod vpin;
 pub mod whale_detector;
+pub mod whale_detector;
+pub mod whale_strategy;
 
 pub use arbitrage::{ArbitrageConfig, ArbitrageStrategy};
 pub use cross_asset::{AssetCorrelation, CorrelationType, CrossAssetConfig, CrossAssetStrategy};
@@ -77,3 +79,7 @@ pub use news_velocity::{
     VelocityMarketMapping,
 };
 pub use thompson_sampling::{ArmState, MultiArmedBandit, ThompsonSampler};
+pub use whale_detector::{
+    LargeOrder, OrderbookSnapshot, WhaleActivity, WhaleActivityType, WhaleConfig, WhaleDetector,
+};
+pub use whale_strategy::{WhaleStrategy, WhaleStrategyConfig};

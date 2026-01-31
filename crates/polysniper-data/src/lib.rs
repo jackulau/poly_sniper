@@ -44,6 +44,7 @@ pub use feed_types::{FeedConfig, FeedError, FeedItem, FeedSource, RssConfig, Rss
 pub use gamma_client::GammaClient;
 pub use http_pool::{HttpPool, HttpPoolConfig, HttpPoolError, WarmupResult};
 pub use market_cache::MarketCache;
+pub use market_cache::{LargeOrder, MarketCache, OrderbookHistory, OrderbookSnapshot};
 pub use openrouter_client::{
     ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice, OpenRouterClient,
     OpenRouterConfig, ResponseFormat, ResponseMessage, Usage,

@@ -85,6 +85,8 @@ pub enum SystemEvent {
 
     /// Prediction arbitrage opportunity detected
     PredictionArbitrageDetected(PredictionArbitrageEvent),
+    /// Whale activity detected
+    WhaleDetected(WhaleDetectedEvent),
 }
 
 impl SystemEvent {
@@ -119,6 +121,7 @@ impl SystemEvent {
             SystemEvent::CommentActivitySpike(_) => "comment_activity_spike",
             SystemEvent::ExternalPriceUpdate(_) => "external_price_update",
             SystemEvent::PredictionArbitrageDetected(_) => "prediction_arbitrage_detected",
+            SystemEvent::WhaleDetected(_) => "whale_detected",
         }
     }
 
@@ -153,6 +156,7 @@ impl SystemEvent {
             SystemEvent::CommentActivitySpike(e) => e.timestamp,
             SystemEvent::ExternalPriceUpdate(e) => e.timestamp,
             SystemEvent::PredictionArbitrageDetected(e) => e.timestamp,
+            SystemEvent::WhaleDetected(e) => e.timestamp,
         }
     }
 
@@ -187,6 +191,7 @@ impl SystemEvent {
             SystemEvent::CommentActivitySpike(e) => Some(&e.market_id),
             SystemEvent::ExternalPriceUpdate(e) => e.polymarket_mapping.as_ref(),
             SystemEvent::PredictionArbitrageDetected(e) => Some(&e.polymarket_id),
+            SystemEvent::WhaleDetected(e) => Some(&e.market_id),
         }
     }
 }
@@ -706,6 +711,26 @@ impl std::fmt::Display for MarketOutcome {
             MarketOutcome::Yes => write!(f, "YES"),
             MarketOutcome::No => write!(f, "NO"),
             MarketOutcome::Voided => write!(f, "VOIDED"),
+/// Type of whale activity detected
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WhaleActivityType {
+    /// Single large resting order detected
+    LargeResting,
+    /// Multiple large orders appearing within a time window (accumulation)
+    Accumulation,
+    /// Large order being worked (detected via repeated fills at same level)
+    Iceberg,
+    /// Large order placed then quickly cancelled (spoofing)
+    Spoofing,
+}
+
+impl std::fmt::Display for WhaleActivityType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WhaleActivityType::LargeResting => write!(f, "Large Resting Order"),
+            WhaleActivityType::Accumulation => write!(f, "Accumulation"),
+            WhaleActivityType::Iceberg => write!(f, "Iceberg Order"),
+            WhaleActivityType::Spoofing => write!(f, "Spoofing"),
         }
     }
 }
@@ -806,6 +831,25 @@ impl VpinUpdateEvent {
             timestamp: Utc::now(),
         }
     }
+/// Information about detected whale activity
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WhaleActivityInfo {
+    /// Type of whale activity
+    pub activity_type: WhaleActivityType,
+    /// Buy or Sell side
+    pub side: crate::types::Side,
+    /// Total size in USD of whale orders
+    pub total_size_usd: Decimal,
+    /// Number of whale orders contributing to this activity
+    pub num_orders: u32,
+    /// Average price of whale orders
+    pub avg_price: Decimal,
+    /// When the activity was first detected
+    pub first_seen: DateTime<Utc>,
+    /// When the activity was last updated
+    pub last_seen: DateTime<Utc>,
+    /// Confidence score (0.0 to 1.0)
+    pub confidence: Decimal,
 }
 
 /// Whale activity detected event
@@ -832,6 +876,13 @@ pub struct WhaleDetectedEvent {
     /// Confidence in the recommendation (0.0 to 1.0)
     pub confidence: Decimal,
     /// When the alert was generated
+    /// Token ID where whale activity was detected
+    pub token_id: TokenId,
+    /// Market ID
+    pub market_id: MarketId,
+    /// Details of the whale activity
+    pub activity: WhaleActivityInfo,
+    /// When the event was generated
     pub timestamp: DateTime<Utc>,
 }
 
@@ -846,6 +897,10 @@ impl WhaleDetectedEvent {
         side: Side,
         recommended_action: WhaleAction,
         confidence: Decimal,
+    pub fn new(
+        token_id: TokenId,
+        market_id: MarketId,
+        activity: WhaleActivityInfo,
     ) -> Self {
         Self {
             token_id,
@@ -926,6 +981,7 @@ impl ImpactPredictionEvent {
             permanent_impact_bps,
             expected_recovery_secs,
             model_confidence,
+            activity,
             timestamp: Utc::now(),
         }
     }
