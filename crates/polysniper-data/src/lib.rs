@@ -11,6 +11,7 @@ pub mod gamma_client;
 pub mod http_pool;
 pub mod market_cache;
 pub mod openrouter_client;
+pub mod providers;
 pub mod resolution_monitor;
 pub mod rss_client;
 pub mod twitter_client;
@@ -29,6 +30,7 @@ pub use openrouter_client::{
     ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice, OpenRouterClient,
     OpenRouterConfig, ResponseFormat, ResponseMessage, Usage,
 };
+pub use providers::{BoxedProvider, LlmProvider, OpenRouterProvider, ProviderError, ProviderFactory};
 pub use resolution_monitor::ResolutionMonitor;
 pub use rss_client::RssClient;
 pub use twitter_client::TwitterClient;

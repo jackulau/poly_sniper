@@ -4,6 +4,7 @@
 
 pub mod arbitrage;
 pub mod cross_asset;
+pub mod ensemble;
 pub mod event_based;
 pub mod liquidity_provision;
 pub mod llm_prediction;
@@ -20,6 +21,7 @@ pub mod vpin;
 
 pub use arbitrage::{ArbitrageConfig, ArbitrageStrategy};
 pub use cross_asset::{AssetCorrelation, CorrelationType, CrossAssetConfig, CrossAssetStrategy};
+pub use ensemble::{EnsembleError, EnsembleOrchestrator};
 pub use event_based::{EventBasedConfig, EventBasedStrategy};
 pub use liquidity_provision::{LiquidityProvisionConfig, LiquidityProvisionStrategy};
 pub use llm_prediction::{LlmPredictionConfig, LlmPredictionStrategy};
