@@ -111,6 +111,28 @@ min_size_multiplier = 0.25
 # Maximum size multiplier ceiling (e.g., 1.5 = 150% of normal size in low volatility)
 max_size_multiplier = 1.5
 
+# Drawdown-triggered position scaling
+# Progressively reduces position sizes as portfolio drawdown deepens
+[risk.drawdown]
+# Whether drawdown-based scaling is enabled
+enabled = true
+# Tier 1: 5% drawdown -> reduce to 75% size
+tier_1_threshold_pct = 5.0
+tier_1_multiplier = 0.75
+# Tier 2: 10% drawdown -> reduce to 50% size
+tier_2_threshold_pct = 10.0
+tier_2_multiplier = 0.50
+# Tier 3: 20% drawdown -> reduce to 25% size
+tier_3_threshold_pct = 20.0
+tier_3_multiplier = 0.25
+# Maximum drawdown before minimum sizing
+max_drawdown_pct = 30.0
+# Minimum multiplier floor (10% of normal size)
+min_multiplier = 0.10
+# Recovery buffer: must recover by this % from drawdown before increasing sizes
+# Prevents rapid oscillation during volatile recovery periods
+recovery_buffer_pct = 2.0
+
 [execution]
 # Set to true to log orders without actually submitting
 dry_run = true

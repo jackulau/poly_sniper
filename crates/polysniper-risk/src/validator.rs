@@ -1,6 +1,7 @@
 //! Risk validation implementation
 
 use crate::correlation::CorrelationTracker;
+use crate::drawdown::DrawdownCalculator;
 use crate::time_rules::{TimeRuleEngine, TimeRuleResult};
 use crate::volatility::VolatilityCalculator;
 use async_trait::async_trait;
@@ -36,6 +37,8 @@ pub struct RiskManager {
     time_rule_engine: TimeRuleEngine,
     /// Correlation tracker for correlated position limits
     correlation_tracker: CorrelationTracker,
+    /// Drawdown calculator for portfolio-level risk scaling
+    drawdown_calculator: DrawdownCalculator,
 }
 
 impl RiskManager {
@@ -44,6 +47,7 @@ impl RiskManager {
         let volatility_calculator = VolatilityCalculator::new(config.volatility.clone());
         let time_rule_engine = TimeRuleEngine::new(config.time_rules.clone());
         let correlation_tracker = CorrelationTracker::new(config.correlation.clone());
+        let drawdown_calculator = DrawdownCalculator::new(config.drawdown.clone());
         Self {
             config: Arc::new(RwLock::new(config)),
             halted: Arc::new(AtomicBool::new(false)),
@@ -52,6 +56,7 @@ impl RiskManager {
             volatility_calculator,
             time_rule_engine,
             correlation_tracker,
+            drawdown_calculator,
         }
     }
 
@@ -187,6 +192,28 @@ impl RiskManager {
     /// Get current config (for inspection)
     pub async fn get_config(&self) -> RiskConfig {
         self.config.read().await.clone()
+    }
+
+    /// Update portfolio equity for drawdown tracking
+    ///
+    /// This should be called after fills, mark-to-market updates, or any portfolio value change.
+    pub fn update_equity(&self, new_value: Decimal) {
+        self.drawdown_calculator.update_equity(new_value);
+    }
+
+    /// Set the initial peak value for drawdown tracking (e.g., from persistence)
+    pub fn set_peak_value(&self, peak: Decimal) {
+        self.drawdown_calculator.set_peak_value(peak);
+    }
+
+    /// Get reference to the drawdown calculator for status queries
+    pub fn drawdown_calculator(&self) -> &DrawdownCalculator {
+        &self.drawdown_calculator
+    }
+
+    /// Get reference to the correlation tracker
+    pub fn correlation_tracker(&self) -> &CorrelationTracker {
+        &self.correlation_tracker
     }
 
     /// Record an order for rate limiting
@@ -372,6 +399,45 @@ impl RiskManager {
 
         None
     }
+
+    /// Calculate drawdown-adjusted size based on portfolio drawdown
+    ///
+    /// Returns (adjusted_size, reason) if drawdown adjustment applies
+    fn calculate_drawdown_adjusted_size(
+        &self,
+        original_size: Decimal,
+        signal_id: &str,
+    ) -> Option<(Decimal, String)> {
+        if !self.drawdown_calculator.is_enabled() {
+            return None;
+        }
+
+        let drawdown_pct = self.drawdown_calculator.calculate_drawdown_pct();
+        let multiplier = self.drawdown_calculator.get_current_multiplier();
+
+        // Only report modification if multiplier is not 1.0
+        if multiplier != Decimal::ONE {
+            let adjusted_size = original_size * multiplier;
+
+            let reason = format!(
+                "Drawdown-adjusted: size {} -> {} (multiplier: {:.2}, drawdown: {:.2}%)",
+                original_size, adjusted_size, multiplier, drawdown_pct
+            );
+
+            info!(
+                signal_id = %signal_id,
+                original_size = %original_size,
+                adjusted_size = %adjusted_size,
+                multiplier = %multiplier,
+                drawdown_pct = %drawdown_pct,
+                "Applying drawdown-based position sizing"
+            );
+
+            return Some((adjusted_size, reason));
+        }
+
+        None
+    }
 }
 
 #[async_trait]
@@ -492,13 +558,29 @@ impl RiskValidator for RiskManager {
             return Err(e);
         }
 
-        // Apply volatility-based position sizing
-        if let Some((adjusted_size, reason)) =
+        // Apply volatility-based position sizing first
+        let (mut current_size, mut reasons) = (signal.size, Vec::new());
+
+        if let Some((vol_adjusted_size, vol_reason)) =
             self.calculate_volatility_adjusted_size(signal, state).await
         {
+            current_size = vol_adjusted_size;
+            reasons.push(vol_reason);
+        }
+
+        // Apply drawdown-based position sizing (after volatility adjustment)
+        if let Some((drawdown_adjusted_size, drawdown_reason)) =
+            self.calculate_drawdown_adjusted_size(current_size, &signal.id)
+        {
+            current_size = drawdown_adjusted_size;
+            reasons.push(drawdown_reason);
+        }
+
+        // If any adjustments were made, return Modified decision
+        if !reasons.is_empty() {
             return Ok(RiskDecision::Modified {
-                new_size: adjusted_size,
-                reason,
+                new_size: current_size,
+                reason: reasons.join("; "),
             });
         }
 
@@ -651,6 +733,8 @@ mod tests {
             max_orders_per_minute: 60,
             volatility: VolatilityConfig::default(),
             time_rules: TimeRulesConfig::default(),
+            volatility: Default::default(),
+            time_rules: Default::default(),
             correlation: CorrelationConfig {
                 enabled: true,
                 correlation_threshold: dec!(0.7),
@@ -659,6 +743,7 @@ mod tests {
                 groups,
                 regime: CorrelationRegimeConfig::default(),
             },
+            drawdown: Default::default(),
         }
     }
 
