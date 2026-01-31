@@ -237,6 +237,39 @@ lazy_static! {
             "Ratio of unique tokens to total events in batch (lower = more dedup)"
         ).buckets(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]),
         &["event_type"]
+    // Fill probability metrics
+    pub static ref FILL_PROBABILITY_ESTIMATE: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "polysniper_fill_probability_estimate",
+            "Fill probability estimates by method"
+        ).buckets(vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]),
+        &["method"]
+    ).unwrap();
+
+    pub static ref FILL_PROBABILITY_CONFIDENCE: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "polysniper_fill_probability_confidence",
+            "Confidence scores for fill probability estimates"
+        ).buckets(vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]),
+        &["method"]
+    ).unwrap();
+
+    pub static ref QUEUE_POSITION_TRACKED_ORDERS: IntGauge = IntGauge::new(
+        "polysniper_queue_position_tracked_orders",
+        "Number of orders currently being tracked for queue position"
+    ).unwrap();
+
+    pub static ref PRICE_LEVEL_TOUCHES: IntCounterVec = IntCounterVec::new(
+        Opts::new("polysniper_price_level_touches_total", "Total price level touches recorded"),
+        &["token_id"]
+    ).unwrap();
+
+    pub static ref FILL_PROBABILITY_ACCURACY: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "polysniper_fill_probability_accuracy",
+            "Accuracy of fill probability predictions (predicted - actual)"
+        ).buckets(vec![-1.0, -0.5, -0.2, -0.1, 0.0, 0.1, 0.2, 0.5, 1.0]),
+        &["method"]
     ).unwrap();
 }
 
@@ -331,6 +364,21 @@ pub fn register_metrics() {
         .ok();
     REGISTRY
         .register(Box::new(BATCH_DEDUPLICATION_RATIO.clone()))
+    // Fill probability metrics
+    REGISTRY
+        .register(Box::new(FILL_PROBABILITY_ESTIMATE.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(FILL_PROBABILITY_CONFIDENCE.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(QUEUE_POSITION_TRACKED_ORDERS.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(PRICE_LEVEL_TOUCHES.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(FILL_PROBABILITY_ACCURACY.clone()))
         .ok();
 }
 
@@ -526,6 +574,32 @@ pub fn record_batch_deduplication(event_type: &str, unique_count: usize, total_c
             .with_label_values(&[event_type])
             .observe(ratio);
     }
+/// Record a fill probability estimate
+pub fn record_fill_probability_estimate(method: &str, probability: f64, confidence: f64) {
+    FILL_PROBABILITY_ESTIMATE
+        .with_label_values(&[method])
+        .observe(probability);
+    FILL_PROBABILITY_CONFIDENCE
+        .with_label_values(&[method])
+        .observe(confidence);
+}
+
+/// Update the count of tracked orders
+pub fn update_tracked_orders_count(count: i64) {
+    QUEUE_POSITION_TRACKED_ORDERS.set(count);
+}
+
+/// Record a price level touch
+pub fn record_price_level_touch(token_id: &str) {
+    PRICE_LEVEL_TOUCHES.with_label_values(&[token_id]).inc();
+}
+
+/// Record fill probability accuracy (for calibration tracking)
+pub fn record_fill_probability_accuracy(method: &str, predicted: f64, actual: f64) {
+    let error = predicted - actual;
+    FILL_PROBABILITY_ACCURACY
+        .with_label_values(&[method])
+        .observe(error);
 }
 
 /// Configuration for metrics
