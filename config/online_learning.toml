@@ -1,0 +1,69 @@
+# Online Learning Configuration
+#
+# Configuration for the online learning system that adapts model weights
+# and parameters based on trade outcomes.
+
+[online_learning]
+# Whether online learning is enabled
+enabled = true
+
+# Alpha for exponential moving average (weight for new observations)
+# Higher values give more weight to recent outcomes
+# Range: 0.0 - 1.0 (typical: 0.05 - 0.2)
+ema_alpha = 0.1
+
+# Minimum predictions before adaptation kicks in
+# Models with fewer predictions will use default thresholds
+min_predictions_for_adaptation = 10
+
+# Half-life for temporal decay in hours
+# Older data is weighted less in calculations
+# 168 hours = 1 week
+decay_half_life_hours = 168
+
+# Maximum recent predictions to keep in memory per model
+max_recent_predictions = 100
+
+[online_learning.thresholds]
+# Minimum confidence threshold (floor)
+# No model threshold can go below this
+min_threshold = 0.40
+
+# Maximum confidence threshold (ceiling)
+# No model threshold can go above this
+max_threshold = 0.90
+
+# Initial/default threshold for new models
+# Used before enough data is collected for adaptation
+initial_threshold = 0.60
+
+# Rate of threshold adjustment per calibration update
+# Higher values make faster adjustments but may be unstable
+# Range: 0.001 - 0.05
+adjustment_rate = 0.01
+
+[online_learning.thompson_sampling]
+# Whether Thompson Sampling is enabled for model selection
+# When enabled, models are selected probabilistically based on
+# their posterior success probability (exploration vs exploitation)
+enabled = true
+
+# Prior alpha (initial successes)
+# Higher values bias towards believing models are accurate
+prior_alpha = 1.0
+
+# Prior beta (initial failures)
+# Higher values bias towards believing models are inaccurate
+prior_beta = 1.0
+
+# Minimum samples before model is eligible for Thompson Sampling selection
+# Models with fewer samples are not included in selection
+min_samples_for_eligibility = 5
+
+[online_learning.persistence]
+# Interval between saves in seconds
+# Learning state is persisted periodically to survive restarts
+save_interval_secs = 60
+
+# Database table name for storing model learning stats
+db_table = "model_learning_stats"

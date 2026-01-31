@@ -187,6 +187,50 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
+        // Model learning stats table for online learning
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS model_learning_stats (
+                model_id TEXT PRIMARY KEY,
+                ema_accuracy TEXT NOT NULL DEFAULT '0.5',
+                adaptive_threshold TEXT NOT NULL DEFAULT '0.6',
+                adaptive_weight TEXT NOT NULL DEFAULT '1.0',
+                thompson_alpha REAL NOT NULL DEFAULT 1.0,
+                thompson_beta REAL NOT NULL DEFAULT 1.0,
+                total_predictions INTEGER NOT NULL DEFAULT 0,
+                correct_predictions INTEGER NOT NULL DEFAULT 0,
+                total_pnl TEXT NOT NULL DEFAULT '0',
+                avg_confidence TEXT NOT NULL DEFAULT '0',
+                recent_predictions TEXT,
+                first_seen_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Prediction outcomes table for tracking individual predictions
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS prediction_outcomes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prediction_id TEXT NOT NULL UNIQUE,
+                model_id TEXT NOT NULL,
+                market_id TEXT,
+                confidence TEXT NOT NULL,
+                predicted_outcome TEXT NOT NULL,
+                actual_outcome TEXT,
+                is_correct INTEGER,
+                pnl TEXT,
+                predicted_at TEXT NOT NULL,
+                resolved_at TEXT
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         // Create indexes for common queries
         sqlx::query(
             r#"
@@ -204,6 +248,10 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_position_history_strategy ON position_history(strategy_id);
             CREATE INDEX IF NOT EXISTS idx_position_history_opened ON position_history(opened_at);
             CREATE INDEX IF NOT EXISTS idx_position_history_closed ON position_history(closed_at);
+            CREATE INDEX IF NOT EXISTS idx_model_learning_stats_updated ON model_learning_stats(updated_at);
+            CREATE INDEX IF NOT EXISTS idx_prediction_outcomes_model ON prediction_outcomes(model_id);
+            CREATE INDEX IF NOT EXISTS idx_prediction_outcomes_market ON prediction_outcomes(market_id);
+            CREATE INDEX IF NOT EXISTS idx_prediction_outcomes_predicted_at ON prediction_outcomes(predicted_at);
             "#,
         )
         .execute(&self.pool)

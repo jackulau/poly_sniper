@@ -185,3 +185,61 @@ impl Default for PersistenceConfig {
         }
     }
 }
+
+/// Model learning stats record for database persistence
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelLearningStatsRecord {
+    /// Model identifier
+    pub model_id: String,
+    /// Exponential moving average of accuracy
+    pub ema_accuracy: Decimal,
+    /// Adaptive confidence threshold
+    pub adaptive_threshold: Decimal,
+    /// Adaptive weight for ensemble
+    pub adaptive_weight: Decimal,
+    /// Thompson Sampling alpha parameter
+    pub thompson_alpha: f64,
+    /// Thompson Sampling beta parameter
+    pub thompson_beta: f64,
+    /// Total prediction count
+    pub total_predictions: i64,
+    /// Correct prediction count
+    pub correct_predictions: i64,
+    /// Total P&L from this model
+    pub total_pnl: Decimal,
+    /// Average confidence of predictions
+    pub avg_confidence: Decimal,
+    /// Recent predictions (JSON serialized)
+    pub recent_predictions: Option<String>,
+    /// When this model was first seen
+    pub first_seen_at: DateTime<Utc>,
+    /// Last update timestamp
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Prediction outcome record for database persistence
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PredictionOutcomeRecord {
+    /// Auto-generated ID
+    pub id: Option<i64>,
+    /// Unique prediction identifier
+    pub prediction_id: String,
+    /// Model that made the prediction
+    pub model_id: String,
+    /// Market ID (optional)
+    pub market_id: Option<String>,
+    /// Confidence of the prediction
+    pub confidence: Decimal,
+    /// Predicted outcome (YES/NO)
+    pub predicted_outcome: String,
+    /// Actual outcome (YES/NO, None if pending)
+    pub actual_outcome: Option<String>,
+    /// Whether prediction was correct (None if pending)
+    pub is_correct: Option<bool>,
+    /// Realized P&L from this prediction
+    pub pnl: Option<Decimal>,
+    /// When prediction was made
+    pub predicted_at: DateTime<Utc>,
+    /// When outcome was resolved (None if pending)
+    pub resolved_at: Option<DateTime<Utc>>,
+}
