@@ -31,3 +31,5 @@ uuid.workspace = true
 # Connection warmup dependencies
 rand.workspace = true
 parking_lot = "0.12"
+[dev-dependencies]
+rust_decimal_macros.workspace = true

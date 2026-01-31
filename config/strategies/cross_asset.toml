@@ -1,0 +1,64 @@
+# Cross-Asset Strategy Configuration
+#
+# This strategy monitors cryptocurrency price movements (ETH, BTC, SOL) and
+# generates trade signals for correlated Polymarket markets. For example,
+# ETH price surges may predict ETF approval odds increases.
+
+[strategy]
+enabled = false
+
+# Minimum crypto price change percentage to trigger a signal
+# A 5% move in a crypto asset will trigger correlation analysis
+min_price_change_pct = "5.0"
+
+# Delay in seconds before generating signal after price movement
+# This allows for market stabilization and reduces false signals
+signal_delay_secs = 60
+
+# Cooldown in seconds between signals for same correlation pair
+# Prevents rapid-fire trading on the same correlation
+cooldown_secs = 300
+
+# Maximum entry price for buying (0.0 to 1.0)
+# Prevents buying when prediction market price is already too high
+max_entry_price = "0.85"
+
+# Price history window in minutes for velocity calculation
+price_history_minutes = 60
+
+# Priority for generated signals: Low, Normal, High, Critical
+signal_priority = "High"
+
+# Correlation rules
+# Each rule maps a crypto asset to prediction market keywords
+# correlation_type: "positive" means crypto up -> market YES up
+#                   "negative" means crypto up -> market YES down
+
+[[strategy.correlations]]
+crypto_symbol = "ETH"
+market_keywords = ["eth", "ethereum", "etf", "spot etf"]
+correlation_type = "positive"
+min_confidence = "0.7"
+order_size_usd = "50.0"
+
+[[strategy.correlations]]
+crypto_symbol = "BTC"
+market_keywords = ["bitcoin", "btc", "strategic reserve", "btc etf"]
+correlation_type = "positive"
+min_confidence = "0.7"
+order_size_usd = "50.0"
+
+[[strategy.correlations]]
+crypto_symbol = "SOL"
+market_keywords = ["solana", "sol", "solana etf"]
+correlation_type = "positive"
+min_confidence = "0.7"
+order_size_usd = "50.0"
+
+# Example negative correlation: crypto pump -> regulatory concerns increase
+# [[strategy.correlations]]
+# crypto_symbol = "BTC"
+# market_keywords = ["crypto regulation", "ban"]
+# correlation_type = "negative"
+# min_confidence = "0.6"
+# order_size_usd = "25.0"

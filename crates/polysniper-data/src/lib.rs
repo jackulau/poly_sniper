@@ -3,6 +3,7 @@
 //! Data ingestion layer for WebSocket and REST API clients.
 
 pub mod connection_health;
+pub mod crypto_price_client;
 pub mod event_bus;
 pub mod feed_aggregator;
 pub mod feed_types;
@@ -17,6 +18,7 @@ pub mod webhook_server;
 pub mod ws_manager;
 
 pub use connection_health::{ConnectionHealth, HealthSnapshot, HealthStatus};
+pub use crypto_price_client::{CryptoApiProvider, CryptoPrice, CryptoPriceClient, CryptoPriceConfig};
 pub use event_bus::BroadcastEventBus;
 pub use feed_aggregator::FeedAggregator;
 pub use feed_types::{FeedConfig, FeedError, FeedItem, FeedSource, RssConfig, RssFeedConfig, TwitterConfig, TwitterQueryConfig};
