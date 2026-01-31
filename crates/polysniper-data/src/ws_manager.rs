@@ -1,23 +1,84 @@
-//! WebSocket manager for CLOB real-time data
+//! WebSocket manager for CLOB real-time data with connection warmup
 
 use futures::{SinkExt, StreamExt};
 use polysniper_core::{
     DataSourceError, MarketId, Orderbook, PriceChangeEvent, PriceLevel, SystemEvent, TokenId,
 };
+use rand::Rng;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::{broadcast, RwLock};
-use tokio::time::{interval, timeout};
+use std::time::{Duration, Instant};
+use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::time::timeout;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, error, info, warn};
 
-const RECONNECT_DELAY: Duration = Duration::from_secs(1);
-const PING_INTERVAL: Duration = Duration::from_secs(30);
-const MESSAGE_TIMEOUT: Duration = Duration::from_secs(60);
+use crate::connection_health::{ConnectionHealth, HealthStatus};
+
+/// Connection warmup configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectionConfig {
+    /// Ping interval for keep-alive (more aggressive than passive 30s)
+    #[serde(with = "humantime_serde", default = "default_ping_interval")]
+    pub ping_interval: Duration,
+    /// Pong timeout before considering connection dead
+    #[serde(with = "humantime_serde", default = "default_pong_timeout")]
+    pub pong_timeout: Duration,
+    /// Initial reconnect delay
+    #[serde(with = "humantime_serde", default = "default_initial_reconnect_delay")]
+    pub initial_reconnect_delay: Duration,
+    /// Maximum reconnect delay
+    #[serde(with = "humantime_serde", default = "default_max_reconnect_delay")]
+    pub max_reconnect_delay: Duration,
+    /// Backoff multiplier for exponential backoff
+    #[serde(default = "default_backoff_multiplier")]
+    pub backoff_multiplier: f64,
+    /// Jitter factor to prevent thundering herd (0.0 to 1.0)
+    #[serde(default = "default_jitter_factor")]
+    pub jitter_factor: f64,
+    /// Message timeout (considers connection dead if no message received)
+    #[serde(with = "humantime_serde", default = "default_message_timeout")]
+    pub message_timeout: Duration,
+}
+
+fn default_ping_interval() -> Duration {
+    Duration::from_secs(15)
+}
+fn default_pong_timeout() -> Duration {
+    Duration::from_secs(5)
+}
+fn default_initial_reconnect_delay() -> Duration {
+    Duration::from_millis(100)
+}
+fn default_max_reconnect_delay() -> Duration {
+    Duration::from_secs(30)
+}
+fn default_backoff_multiplier() -> f64 {
+    2.0
+}
+fn default_jitter_factor() -> f64 {
+    0.1
+}
+fn default_message_timeout() -> Duration {
+    Duration::from_secs(60)
+}
+
+impl Default for ConnectionConfig {
+    fn default() -> Self {
+        Self {
+            ping_interval: default_ping_interval(),
+            pong_timeout: default_pong_timeout(),
+            initial_reconnect_delay: default_initial_reconnect_delay(),
+            max_reconnect_delay: default_max_reconnect_delay(),
+            backoff_multiplier: default_backoff_multiplier(),
+            jitter_factor: default_jitter_factor(),
+            message_timeout: default_message_timeout(),
+        }
+    }
+}
 
 /// WebSocket message types from CLOB
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,30 +149,61 @@ impl SubscribeRequest {
     }
 }
 
-/// WebSocket manager for CLOB data
+/// Internal commands for the ping loop
+enum PingCommand {
+    RecordPong { rtt: Duration },
+    Shutdown,
+}
+
+/// WebSocket manager for CLOB data with connection warmup
 pub struct WsManager {
     ws_url: String,
     event_tx: broadcast::Sender<SystemEvent>,
     connected: Arc<AtomicBool>,
     subscribed_tokens: Arc<RwLock<HashSet<TokenId>>>,
     market_token_map: Arc<RwLock<std::collections::HashMap<TokenId, MarketId>>>,
+    config: ConnectionConfig,
+    reconnect_attempts: AtomicU32,
+    health: Arc<ConnectionHealth>,
 }
 
 impl WsManager {
-    /// Create a new WebSocket manager
+    /// Create a new WebSocket manager with default configuration
     pub fn new(ws_url: String, event_tx: broadcast::Sender<SystemEvent>) -> Self {
+        Self::with_config(ws_url, event_tx, ConnectionConfig::default())
+    }
+
+    /// Create a new WebSocket manager with custom configuration
+    pub fn with_config(
+        ws_url: String,
+        event_tx: broadcast::Sender<SystemEvent>,
+        config: ConnectionConfig,
+    ) -> Self {
         Self {
             ws_url,
             event_tx,
             connected: Arc::new(AtomicBool::new(false)),
             subscribed_tokens: Arc::new(RwLock::new(HashSet::new())),
             market_token_map: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            config,
+            reconnect_attempts: AtomicU32::new(0),
+            health: Arc::new(ConnectionHealth::new()),
         }
     }
 
     /// Check if connected
     pub fn is_connected(&self) -> bool {
         self.connected.load(Ordering::SeqCst)
+    }
+
+    /// Get connection health status
+    pub fn health_status(&self) -> HealthStatus {
+        self.health.status()
+    }
+
+    /// Get connection health metrics
+    pub fn health(&self) -> &ConnectionHealth {
+        &self.health
     }
 
     /// Subscribe to a token's book and price updates
@@ -132,6 +224,27 @@ impl WsManager {
         self.market_token_map.write().await.remove(token_id);
     }
 
+    /// Calculate reconnect delay with exponential backoff and jitter
+    fn calculate_reconnect_delay(&self, attempt: u32) -> Duration {
+        let base_delay = self.config.initial_reconnect_delay.as_secs_f64()
+            * self.config.backoff_multiplier.powi(attempt as i32);
+        let capped_delay = base_delay.min(self.config.max_reconnect_delay.as_secs_f64());
+
+        // Add jitter to prevent thundering herd
+        let mut rng = rand::thread_rng();
+        let jitter = capped_delay * self.config.jitter_factor * rng.gen::<f64>();
+        let final_delay = capped_delay + jitter;
+
+        debug!(
+            attempt = attempt,
+            base_delay_ms = (base_delay * 1000.0) as u64,
+            final_delay_ms = (final_delay * 1000.0) as u64,
+            "Calculated reconnect delay"
+        );
+
+        Duration::from_secs_f64(final_delay)
+    }
+
     /// Start the WebSocket connection with automatic reconnection
     pub async fn run(&self) -> Result<(), DataSourceError> {
         loop {
@@ -141,10 +254,21 @@ impl WsManager {
                     break;
                 }
                 Err(e) => {
-                    error!("WebSocket error: {}, reconnecting...", e);
+                    let attempt = self.reconnect_attempts.fetch_add(1, Ordering::SeqCst);
+                    let delay = self.calculate_reconnect_delay(attempt);
+
+                    error!(
+                        error = %e,
+                        attempt = attempt,
+                        delay_ms = delay.as_millis() as u64,
+                        "WebSocket error, reconnecting with backoff"
+                    );
+
                     self.connected.store(false, Ordering::SeqCst);
+                    self.health.record_failure();
                     self.publish_connection_status(false, Some(e.to_string()));
-                    tokio::time::sleep(RECONNECT_DELAY).await;
+
+                    tokio::time::sleep(delay).await;
                 }
             }
         }
@@ -160,7 +284,10 @@ impl WsManager {
 
         let (mut write, mut read) = ws_stream.split();
 
+        // Reset reconnect attempts on successful connection
+        self.reconnect_attempts.store(0, Ordering::SeqCst);
         self.connected.store(true, Ordering::SeqCst);
+        self.health.reset();
         self.publish_connection_status(true, None);
         info!("WebSocket connected");
 
@@ -193,51 +320,138 @@ impl WsManager {
             debug!("Sent subscription requests");
         }
 
-        // Spawn ping task
+        // Create channel for ping commands
+        let (ping_cmd_tx, mut ping_cmd_rx) = mpsc::channel::<PingCommand>(16);
+
+        // Spawn active ping loop
         let connected_flag = self.connected.clone();
+        let ping_interval = self.config.ping_interval;
+        let pong_timeout = self.config.pong_timeout;
+        let health = self.health.clone();
+
         let ping_handle = tokio::spawn(async move {
-            let mut ping_interval = interval(PING_INTERVAL);
-            while connected_flag.load(Ordering::SeqCst) {
-                ping_interval.tick().await;
-                // Note: actual ping sending would need access to write stream
-                // This is simplified - in production, use a channel
+            let mut interval = tokio::time::interval(ping_interval);
+            let mut pending_ping: Option<Instant> = None;
+            let mut last_pong = Instant::now();
+
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        // Check if we're still connected
+                        if !connected_flag.load(Ordering::SeqCst) {
+                            break;
+                        }
+
+                        // Check if pending ping timed out
+                        if let Some(ping_time) = pending_ping {
+                            if ping_time.elapsed() > pong_timeout {
+                                warn!(
+                                    timeout_ms = pong_timeout.as_millis() as u64,
+                                    "Pong timeout, connection may be dead"
+                                );
+                                health.record_failure();
+                                connected_flag.store(false, Ordering::SeqCst);
+                                break;
+                            }
+                        }
+
+                        // Check last pong time
+                        if last_pong.elapsed() > pong_timeout * 3 {
+                            warn!("Extended pong timeout, marking connection unhealthy");
+                            health.record_failure();
+                        }
+
+                        // Record that we're about to send a ping
+                        pending_ping = Some(Instant::now());
+                    }
+                    cmd = ping_cmd_rx.recv() => {
+                        match cmd {
+                            Some(PingCommand::RecordPong { rtt }) => {
+                                pending_ping = None;
+                                last_pong = Instant::now();
+                                health.record_pong(rtt);
+                                debug!(rtt_ms = rtt.as_millis() as u64, "Recorded pong");
+                            }
+                            Some(PingCommand::Shutdown) | None => {
+                                break;
+                            }
+                        }
+                    }
+                }
             }
         });
 
-        // Main message loop
-        loop {
-            let msg = timeout(MESSAGE_TIMEOUT, read.next()).await;
+        // Track when we sent pings for RTT calculation
+        let mut last_ping_time: Option<Instant> = None;
 
-            match msg {
-                Ok(Some(Ok(Message::Text(text)))) => {
-                    self.handle_message(&text).await;
+        // Main message loop with active ping sending
+        let mut ping_interval = tokio::time::interval(self.config.ping_interval);
+
+        loop {
+            tokio::select! {
+                // Periodic ping sending
+                _ = ping_interval.tick() => {
+                    if let Err(e) = write.send(Message::Ping(vec![].into())).await {
+                        warn!(error = %e, "Failed to send ping");
+                        break;
+                    }
+                    last_ping_time = Some(Instant::now());
+                    debug!("Sent ping");
                 }
-                Ok(Some(Ok(Message::Ping(_data)))) => {
-                    // Pong is handled automatically by tungstenite
-                    debug!("Received ping");
+
+                // Message receiving
+                msg = timeout(self.config.message_timeout, read.next()) => {
+                    match msg {
+                        Ok(Some(Ok(Message::Text(text)))) => {
+                            self.health.record_message();
+                            self.handle_message(&text).await;
+                        }
+                        Ok(Some(Ok(Message::Ping(data)))) => {
+                            // Respond to server pings
+                            if let Err(e) = write.send(Message::Pong(data)).await {
+                                warn!(error = %e, "Failed to send pong response");
+                            }
+                            debug!("Received ping, sent pong");
+                        }
+                        Ok(Some(Ok(Message::Pong(_)))) => {
+                            // Calculate RTT if we have a pending ping
+                            if let Some(ping_time) = last_ping_time.take() {
+                                let rtt = ping_time.elapsed();
+                                let _ = ping_cmd_tx.send(PingCommand::RecordPong { rtt }).await;
+                            }
+                            debug!("Received pong");
+                        }
+                        Ok(Some(Ok(Message::Close(_)))) => {
+                            info!("WebSocket closed by server");
+                            break;
+                        }
+                        Ok(Some(Err(e))) => {
+                            error!(error = %e, "WebSocket error");
+                            break;
+                        }
+                        Ok(None) => {
+                            info!("WebSocket stream ended");
+                            break;
+                        }
+                        Err(_) => {
+                            warn!(
+                                timeout_secs = self.config.message_timeout.as_secs(),
+                                "WebSocket message timeout"
+                            );
+                            self.health.record_failure();
+                            break;
+                        }
+                        _ => {}
+                    }
                 }
-                Ok(Some(Ok(Message::Close(_)))) => {
-                    info!("WebSocket closed by server");
-                    break;
-                }
-                Ok(Some(Err(e))) => {
-                    error!("WebSocket error: {}", e);
-                    break;
-                }
-                Ok(None) => {
-                    info!("WebSocket stream ended");
-                    break;
-                }
-                Err(_) => {
-                    warn!("WebSocket message timeout");
-                    break;
-                }
-                _ => {}
             }
         }
 
+        // Cleanup
         self.connected.store(false, Ordering::SeqCst);
+        let _ = ping_cmd_tx.send(PingCommand::Shutdown).await;
         ping_handle.abort();
+
         Ok(())
     }
 
@@ -302,6 +516,7 @@ impl WsManager {
                 }
                 WsMessage::Heartbeat => {
                     debug!("Received heartbeat");
+                    self.health.record_message();
                 }
                 WsMessage::Error { message } => {
                     error!("WebSocket error message: {}", message);
@@ -352,5 +567,26 @@ impl WsManager {
             timestamp: chrono::Utc::now(),
         });
         let _ = self.event_tx.send(event);
+    }
+}
+
+/// Module for humantime serde deserialization
+mod humantime_serde {
+    use serde::{self, Deserialize, Deserializer, Serializer};
+    use std::time::Duration;
+
+    pub fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(duration.as_millis() as u64)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let ms = u64::deserialize(deserializer)?;
+        Ok(Duration::from_millis(ms))
     }
 }

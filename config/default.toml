@@ -12,6 +12,40 @@ clob_rest = "https://clob.polymarket.com"
 clob_ws = "wss://ws-subscriptions-clob.polymarket.com/ws/"
 gamma_api = "https://gamma-api.polymarket.com"
 
+# Connection warmup and keep-alive settings
+[connection]
+# WebSocket settings
+# Ping interval in milliseconds (more aggressive than default 30s)
+ws_ping_interval_ms = 15000
+# Pong timeout in milliseconds before considering connection dead
+ws_pong_timeout_ms = 5000
+# Initial reconnect delay in milliseconds
+ws_initial_reconnect_delay_ms = 100
+# Maximum reconnect delay in milliseconds
+ws_max_reconnect_delay_ms = 30000
+# Backoff multiplier for exponential backoff
+ws_backoff_multiplier = 2.0
+# Jitter factor to prevent thundering herd (0.0 to 1.0)
+ws_jitter_factor = 0.1
+
+# HTTP pool settings
+# Maximum idle connections per host
+http_max_idle_per_host = 10
+# How long to keep idle connections (seconds)
+http_idle_timeout_secs = 90
+# Connection timeout (seconds)
+http_connect_timeout_secs = 5
+# TCP keepalive interval (seconds)
+http_tcp_keepalive_secs = 60
+# Request timeout (seconds)
+http_request_timeout_secs = 30
+
+# Warmup endpoints (establish connections on startup to reduce cold-start latency)
+warmup_urls = [
+    "https://clob.polymarket.com/",
+    "https://gamma-api.polymarket.com/"
+]
+
 [auth]
 # Environment variable containing the private key
 private_key_env = "POLYMARKET_PRIVATE_KEY"

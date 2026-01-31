@@ -27,3 +27,7 @@ sha2 = "0.10"
 # Webhook server dependencies
 axum.workspace = true
 uuid.workspace = true
+
+# Connection warmup dependencies
+rand.workspace = true
+parking_lot = "0.12"

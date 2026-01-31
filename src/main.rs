@@ -13,7 +13,7 @@ use polysniper_core::{
     HeartbeatEvent, OrderExecutor, RiskDecision, RiskValidator, StateManager, StateProvider,
     Strategy, SystemEvent, TradeSignal, should_bypass_batching,
 };
-use polysniper_data::{BroadcastEventBus, GammaClient, MarketCache, WebhookServer, WsManager};
+use polysniper_data::{BroadcastEventBus, ConnectionConfig, GammaClient, HttpPool, HttpPoolConfig, MarketCache, WebhookServer, WsManager};
 use polysniper_discord::DiscordNotifier;
 use polysniper_execution::{GasOptimizer, OrderBuilder, OrderSubmitter};
 use polysniper_observability::{
@@ -104,6 +104,7 @@ struct App {
     order_executor: Arc<dyn OrderExecutor>,
     gas_optimizer: Option<Arc<GasOptimizer>>,
     gamma_client: Arc<GammaClient>,
+    http_pool: Arc<HttpPool>,
     database: Option<Arc<Database>>,
     alert_manager: Option<Arc<AlertManager>>,
     discord_notifier: Option<Arc<DiscordNotifier>>,
@@ -119,6 +120,19 @@ impl App {
         // Initialize components
         let event_bus = Arc::new(BroadcastEventBus::new());
         let state = Arc::new(MarketCache::new());
+
+        // Initialize HTTP connection pool with warmup
+        let http_pool_config = HttpPoolConfig {
+            max_idle_per_host: config.connection.http_max_idle_per_host,
+            idle_timeout_secs: config.connection.http_idle_timeout_secs,
+            connect_timeout_secs: config.connection.http_connect_timeout_secs,
+            tcp_keepalive_secs: config.connection.http_tcp_keepalive_secs,
+            request_timeout_secs: config.connection.http_request_timeout_secs,
+            warmup_urls: config.connection.warmup_urls.clone(),
+        };
+        let http_pool = Arc::new(
+            HttpPool::new(http_pool_config).context("Failed to create HTTP pool")?,
+        );
 
         // Initialize Gamma client for market discovery
         let gamma_client = Arc::new(GammaClient::new(config.endpoints.gamma_api.clone()));
@@ -205,6 +219,7 @@ impl App {
             order_executor,
             gas_optimizer,
             gamma_client,
+            http_pool,
             database,
             alert_manager,
             discord_notifier,
@@ -384,6 +399,31 @@ impl App {
         // Initialize strategies
         self.initialize_strategies().await?;
 
+        // Warm up HTTP connections before starting trading
+        if self.http_pool.has_warmup_urls() {
+            info!("Warming up HTTP connections...");
+            match self.http_pool.warmup().await {
+                Ok(result) => {
+                    if result.all_successful() {
+                        info!(
+                            count = result.successful,
+                            avg_latency_ms = result.avg_latency_ms().unwrap_or(0),
+                            "HTTP connections warmed up successfully"
+                        );
+                    } else {
+                        warn!(
+                            successful = result.successful,
+                            failed = result.failed,
+                            "Some HTTP warmup connections failed"
+                        );
+                    }
+                }
+                Err(e) => {
+                    warn!(error = %e, "HTTP connection warmup failed, continuing anyway");
+                }
+            }
+        }
+
         // Load initial markets from Gamma
         self.load_initial_markets().await?;
 
@@ -447,10 +487,20 @@ impl App {
             }
         }
 
-        // Spawn WebSocket manager
-        let ws_manager = WsManager::new(
+        // Spawn WebSocket manager with connection warmup configuration
+        let ws_config = ConnectionConfig {
+            ping_interval: std::time::Duration::from_millis(self.config.connection.ws_ping_interval_ms),
+            pong_timeout: std::time::Duration::from_millis(self.config.connection.ws_pong_timeout_ms),
+            initial_reconnect_delay: std::time::Duration::from_millis(self.config.connection.ws_initial_reconnect_delay_ms),
+            max_reconnect_delay: std::time::Duration::from_millis(self.config.connection.ws_max_reconnect_delay_ms),
+            backoff_multiplier: self.config.connection.ws_backoff_multiplier,
+            jitter_factor: self.config.connection.ws_jitter_factor,
+            message_timeout: std::time::Duration::from_secs(60),
+        };
+        let ws_manager = WsManager::with_config(
             self.config.endpoints.clob_ws.clone(),
             self.event_bus.sender(),
+            ws_config,
         );
 
         // Subscribe to markets for price updates

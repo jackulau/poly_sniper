@@ -148,6 +148,44 @@ lazy_static! {
         &["endpoint"]
     ).unwrap();
 
+    // Connection warmup metrics
+    pub static ref CONNECTION_RTT: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "polysniper_connection_rtt_seconds",
+            "WebSocket ping-pong roundtrip time"
+        ).buckets(vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5]),
+        &["connection"]
+    ).unwrap();
+
+    pub static ref CONNECTION_HEALTH: GaugeVec = GaugeVec::new(
+        Opts::new(
+            "polysniper_connection_health",
+            "Connection health status (0=unhealthy, 1=degraded, 2=healthy)"
+        ),
+        &["connection"]
+    ).unwrap();
+
+    pub static ref RECONNECT_BACKOFF: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "polysniper_reconnect_backoff_seconds",
+            "Time waited before reconnection attempt"
+        ).buckets(vec![0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0]),
+        &["connection"]
+    ).unwrap();
+
+    pub static ref HTTP_POOL_WARMUP_DURATION: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "polysniper_http_pool_warmup_duration_seconds",
+            "HTTP connection pool warmup duration"
+        ).buckets(vec![0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5]),
+        &["endpoint"]
+    ).unwrap();
+
+    pub static ref HTTP_POOL_WARMUP_STATUS: IntCounterVec = IntCounterVec::new(
+        Opts::new("polysniper_http_pool_warmup_total", "HTTP pool warmup attempts"),
+        &["status"]
+    ).unwrap();
+
     // Alerting metrics
     pub static ref ALERTS_SENT: IntCounterVec = IntCounterVec::new(
         Opts::new("polysniper_alerts_sent_total", "Total alerts sent"),
@@ -254,6 +292,21 @@ pub fn register_metrics() {
     REGISTRY.register(Box::new(API_REQUESTS.clone())).ok();
     REGISTRY
         .register(Box::new(API_REQUEST_DURATION.clone()))
+        .ok();
+
+    // Connection warmup metrics
+    REGISTRY.register(Box::new(CONNECTION_RTT.clone())).ok();
+    REGISTRY
+        .register(Box::new(CONNECTION_HEALTH.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(RECONNECT_BACKOFF.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(HTTP_POOL_WARMUP_DURATION.clone()))
+        .ok();
+    REGISTRY
+        .register(Box::new(HTTP_POOL_WARMUP_STATUS.clone()))
         .ok();
 
     // Alerting metrics
@@ -410,6 +463,37 @@ pub fn record_alert_sent(level: &str, channel: &str) {
 /// Record alert send failure
 pub fn record_alert_failure(channel: &str) {
     ALERT_SEND_FAILURES.with_label_values(&[channel]).inc();
+}
+
+/// Record connection RTT
+pub fn record_connection_rtt(connection: &str, rtt_secs: f64) {
+    CONNECTION_RTT
+        .with_label_values(&[connection])
+        .observe(rtt_secs);
+}
+
+/// Update connection health status
+pub fn update_connection_health(connection: &str, status: i64) {
+    CONNECTION_HEALTH
+        .with_label_values(&[connection])
+        .set(status as f64);
+}
+
+/// Record reconnect backoff time
+pub fn record_reconnect_backoff(connection: &str, backoff_secs: f64) {
+    RECONNECT_BACKOFF
+        .with_label_values(&[connection])
+        .observe(backoff_secs);
+}
+
+/// Record HTTP pool warmup
+pub fn record_http_warmup(endpoint: &str, duration_secs: f64, success: bool) {
+    HTTP_POOL_WARMUP_DURATION
+        .with_label_values(&[endpoint])
+        .observe(duration_secs);
+    HTTP_POOL_WARMUP_STATUS
+        .with_label_values(&[if success { "success" } else { "failure" }])
+        .inc();
 }
 
 /// Update uptime
